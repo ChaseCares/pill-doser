@@ -10,284 +10,60 @@
 		<h2>Dosage Helper</h2>
 
 		<input type="number" id="pills" step="0.1" />
-		<label for="pills">pills</label>
+		<label for="pills">pill(s)</label>
 
-		<label for="hour">pre</label>
+		<label for="hour">per</label>
 		<input type="number" id="hour" />
-		<span>hours</span>
+		<span>hour(s)</span>
 
 		<h3>
 			Rate:
 			<span id="rate"></span>
 		</h3>
 
-		<h3>
-			Start time:
-			<input
-				type="datetime-local"
-				name="Start time"
-				id="startTime"
-				onchange="save_value('startTime', this.value)"
-			/>
-			<input type="button" value="Now" id="now" onclick="setTime('startTime')" />
-		</h3>
 		<h2>Administer events</h2>
 		<table id="add_events"></table>
+
 		<hr />
-		<label for="dosage_amount">Dosage amount:</label>
-		<input type="number" name="Dosage amount" id="dosage_amount" />
+		<input type="button" value="add 2 now" onclick="quickAdd(2)" />
+		<input type="button" value="add 1 now" onclick="quickAdd(1)" />
+		<input type="button" value="add 0.5 now" onclick="quickAdd(0.5)" />
 		<br />
+
+		<h4>Custom event</h4>
+		<label for="dosage_amount">Dosage amount:</label>
+		<input type="number" name="Dosage amount" id="dosage_amount" step="0.1" />
+		<br />
+
 		<label for="dosage_time">Dosage time:</label>
 		<input type="datetime-local" name="new_event" id="new_event_datetime" />
 		<input type="button" value="Now" onclick="setTime('new_event_datetime')" />
-
 		<input type="button" value="add event" onclick="addNewEvent()" />
 
-		<h3>test data</h3>
+		<h3>Test data</h3>
+		<input type="button" value="Clear all" onclick="localStorage.clear()" />
 		<input type="button" value="1 pill every 12 hours for 7 days" onclick="addTestData('1x12')" />
 
-		<canvas id="dosageChart" width="700" height="300"></canvas>
+		<h3>Statistics</h3>
+		<table>
+			<tr>
+				<th>Total given</th>
+				<th id="totalGiven"></th>
+			</tr>
+			<tr>
+				<th>Total needed</th>
+				<th id="totalNeeded"></th>
+			</tr>
+			<tr>
+				<th>Current amount needed</th>
+				<th id="needed"></th>
+			</tr>
+		</table>
+
+		<div id="dosageChart"></div>
+
+		<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+		<script src="./script.js"></script>
 	</body>
-
-	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
-	<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-	<script>
-		const pillsElement = document.getElementById('pills');
-		const hourElement = document.getElementById('hour');
-		const rateElement = document.getElementById('rate');
-
-		const startTimeElement = document.getElementById('startTime');
-
-		let numberOfEvents = load_value('numberOfEvents') || 0;
-		let rate = load_value('rate') || 0;
-		let events = JSON.parse(load_value('events')) || [];
-		const startTime = load_value('startTime') || new Date().toISOString().slice(0, 16);
-
-		initInput(pillsElement, 'pills', 1);
-		initInput(hourElement, 'hour', 8);
-		initInput(startTimeElement, 'startTime', new Date().toISOString().slice(0, 16));
-
-		updateRate();
-
-		pillsElement.addEventListener('input', () => handleInputChange('pills'));
-		hourElement.addEventListener('input', () => handleInputChange('hour'));
-
-		events.forEach(addEvent);
-		plotDosageGraph(events, startTime, 'dosageChart');
-
-		function initInput(element, key, defaultValue) {
-			const savedValue = load_value(key);
-			if (savedValue) {
-				element.value = savedValue;
-			} else {
-				element.value = defaultValue;
-				save_value(key, element.value);
-			}
-		}
-
-		function handleInputChange(key) {
-			const value = document.getElementById(key).value;
-			save_value(key, value);
-			updateRate();
-		}
-
-		function updateRate() {
-			const pillCount = parseFloat(pillsElement.value);
-			const hourCount = parseFloat(hourElement.value);
-
-			const rawRate = pillCount && hourCount ? pillCount / hourCount : '';
-			rateElement.innerText = rawRate.toFixed(3);
-
-			if (pillCount && hourCount) {
-				rate = pillCount / hourCount;
-				save_value('rate', rate);
-			} else {
-				rate = 0;
-			}
-		}
-
-		function addNewEvent() {
-			const dosageAmount = document.getElementById('dosage_amount').value;
-			const dosageTime = document.getElementById('new_event_datetime').value;
-
-			if (dosageAmount && dosageTime) {
-				const event = { dosageAmount, dosageTime };
-				events.push(event);
-				save_value('events', JSON.stringify(events));
-				addEvent(event);
-			}
-
-			plotDosageGraph(events, startTime, 'dosageChart');
-		}
-
-		function addEvent(event) {
-			const eventContainer = document.getElementById('add_events');
-
-			let table = eventContainer.querySelector('table');
-			if (!table) {
-				table = document.createElement('table');
-				table.innerHTML = `
-					<thead>
-						<tr>
-							<th>Dosage Amount</th>
-							<th>Dosage Time</th>
-						</tr>
-					</thead>
-					<tbody></tbody>`;
-				eventContainer.appendChild(table);
-			}
-
-			const tbody = table.querySelector('tbody');
-			const row = document.createElement('tr');
-
-			const fmttedTime = new Date(event.dosageTime).toLocaleString('en-US', {
-				year: 'numeric',
-				month: '2-digit',
-				day: '2-digit',
-				hour: '2-digit',
-				minute: '2-digit',
-			});
-			row.innerHTML = `
-				<td>${event.dosageAmount}</td>
-				<td>${fmttedTime}</td>`;
-			tbody.appendChild(row);
-		}
-
-		function save_value(key, value) {
-			localStorage.setItem(key, value);
-		}
-
-		function load_value(key) {
-			return localStorage.getItem(key);
-		}
-
-		function setTime(id) {
-			const now = new Date();
-			const offset = now.getTimezoneOffset();
-			const localDate = new Date(now.getTime() - offset * 60000);
-			document.getElementById(id).value = localDate.toISOString().slice(0, 16);
-		}
-
-		function plotDosageGraph(events, startTime, canvasId) {
-			const ctx = document.getElementById(canvasId).getContext('2d');
-
-			const data = calculatePlotData(events, startTime);
-
-			window.dosageChart = new Chart(ctx, {
-				data: {
-					labels: data.labels,
-					datasets: [
-						{
-							type: 'line',
-							label: 'Ideal Dosage',
-							data: data.recommendedIntake,
-							borderColor: 'rgba(75, 192, 192, 1)',
-							pointBackgroundColor: 'rgba(75, 192, 192, 1)',
-						},
-						// {
-						// 	type: 'line',
-						// 	label: 'Actual Dosage',
-						// 	data: data.actualRate,
-						// 	borderColor: 'rgba(255, 99, 132, 1)',
-						// 	pointBackgroundColor: 'rgba(255, 99, 132, 1)',
-						// },
-					],
-				},
-				options: {
-					scales: {
-						x: {
-							type: 'time',
-							title: {
-								display: true,
-								text: 'Time',
-							},
-						},
-						y: {
-							beginAtZero: true,
-							title: {
-								display: true,
-								text: 'Dosage Amount',
-							},
-						},
-					},
-				},
-			});
-		}
-
-		function calculatePlotData(events, startTime) {
-			const startDate = new Date(startTime);
-
-			let data = {
-				labels: [],
-				recommendedIntake: [],
-				actualRate: [],
-			};
-
-			let totalDosage = 0;
-			for (let i = 0; i < events.length; i++) {
-				const event = events[i];
-				const eventDate = new Date(event.dosageTime);
-				const hoursDiff = calculateHoursBetween(startDate, eventDate);
-				totalDosage += parseFloat(event.dosageAmount);
-				const idealDosage = rate * hoursDiff - totalDosage;
-
-				if (i != 0) {
-					data.labels.push(eventDate);
-					const previousEventDate = new Date(events[i - 1].dosageTime);
-					const hoursBetween = calculateHoursBetween(previousEventDate, eventDate);
-					data.recommendedIntake.push(rate * hoursBetween);
-				}
-
-				data.labels.push(eventDate);
-				data.recommendedIntake.push(idealDosage);
-
-				data.actualRate.push(totalDosage);
-			}
-
-			console.log('Data:', data);
-
-			return data;
-		}
-
-		function calculateHoursBetween(date1, date2) {
-			// Convert inputs to Date objects if they're not already
-			const d1 = new Date(date1);
-			const d2 = new Date(date2);
-
-			// Check if both dates are valid
-			if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
-				throw new Error('Invalid date input');
-			}
-
-			// Calculate the difference in milliseconds
-			const diffMs = Math.abs(d2 - d1);
-
-			// Convert milliseconds to hours
-			const diffHours = diffMs / (1000 * 60 * 60);
-
-			return diffHours;
-		}
-
-		function addTestData(testType) {
-			if (testType === '1x12') {
-				const startDate = new Date(); // Fix: Use current date/time
-				startDate.setDate(startDate.getDate() - 7);
-				startDate.setHours(8, 0, 0, 0);
-				save_value('startTime', startDate.toISOString().slice(0, 16));
-				startDate.setHours(0, 0, 0, 0);
-				startDate.setDate(startDate.getDate() + 1);
-
-				const intervalHours = 12;
-				const dosesCount = 7;
-				const testData = Array.from({ length: dosesCount }, (_, i) => ({
-					dosageAmount: 1,
-					dosageTime: new Date(
-						startDate.getTime() + i * intervalHours * 60 * 60 * 1000
-					).toISOString(),
-				}));
-
-				save_value('events', JSON.stringify(testData));
-			}
-		}
-	</script>
 </html>
