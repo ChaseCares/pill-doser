@@ -149,10 +149,10 @@ function plotDosageGraph(events, canvasContainerId) {
 			datasets: [
 				{
 					type: 'line',
-					label: 'Ideal Dosage',
+					label: 'Needed Dosage',
 					data: data.recommendedIntake,
 					borderColor: 'rgba(75, 192, 192, 1)',
-					pointBackgroundColor: 'rgba(75, 192, 192, 1)',
+					pointBackgroundColor: 'rgb(0, 0, 0)',
 				},
 			],
 		},
@@ -187,24 +187,27 @@ function calculatePlotData(events) {
 	};
 
 	let totalDosage = 0;
+
 	for (let i = 0; i < events.length; i++) {
-		const event = events[i];
-		const eventDate = new Date(event.dosageTime);
-		const hoursDiff = calculateHoursBetween(startDate, eventDate);
-		totalDosage += parseFloat(event.dosageAmount);
-		const idealDosage = rate * hoursDiff - totalDosage;
+		if (i === 0) {
+			data.labels.push(new Date(events[i].dosageTime));
+			data.recommendedIntake.push(0);
+		} else {
+			const eventTime = new Date(events[i].dosageTime);
+			const hoursDiff = calculateHoursBetween(startDate, eventTime);
 
-		if (i != 0) {
-			data.labels.push(eventDate);
-			const previousEventDate = new Date(events[i - 1].dosageTime);
-			const hoursBetween = calculateHoursBetween(previousEventDate, eventDate);
-			data.recommendedIntake.push(rate * hoursBetween);
+			const dosageAmount = parseFloat(events[i].dosageAmount);
+			const recommendedIntake = rate * hoursDiff;
+
+			data.labels.push(eventTime);
+			data.recommendedIntake.push(recommendedIntake - totalDosage);
+
+			totalDosage += dosageAmount;
+			const DosageNeeded = recommendedIntake - totalDosage;
+
+			data.labels.push(eventTime);
+			data.recommendedIntake.push(DosageNeeded);
 		}
-
-		data.labels.push(eventDate);
-		data.recommendedIntake.push(idealDosage);
-
-		data.actualRate.push(totalDosage);
 	}
 
 	return data;
@@ -235,9 +238,9 @@ function addTestData(testType) {
 		startDate.setDate(startDate.getDate() + 1);
 
 		const intervalHours = 12;
-		const dosesCount = 7;
+		const dosesCount = 13;
 		const testData = Array.from({ length: dosesCount }, (_, i) => ({
-			dosageAmount: 1,
+			dosageAmount: i % 2 === 0 ? '1' : '0.5',
 			dosageTime: new Date(startDate.getTime() + i * intervalHours * 60 * 60 * 1000).toISOString(),
 		}));
 
