@@ -31,7 +31,20 @@ function updateStatistics() {
 	document.getElementById('totalGiven').innerText = totalGiven.toFixed(3);
 	document.getElementById('totalNeeded').innerText = totalNeeded.toFixed(3);
 	document.getElementById('half').innerText = half.toFixed(1);
+	document.getElementById('half_time').innerText = new Date(
+		Date.now() + half * 60 * 60 * 1000
+	).toLocaleString('en-US', {
+		hour: '2-digit',
+		minute: '2-digit',
+	});
+
 	document.getElementById('one').innerText = one.toFixed(1);
+	document.getElementById('one_time').innerText = new Date(
+		Date.now() + one * 60 * 60 * 1000
+	).toLocaleString('en-US', {
+		hour: '2-digit',
+		minute: '2-digit',
+	});
 }
 
 function quickAdd(amount) {
