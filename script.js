@@ -24,9 +24,14 @@ function updateStatistics() {
 	const totalNeeded = rate * calculateHoursBetween(startDate, new Date());
 	const currentNeeded = totalNeeded - totalGiven;
 
+	const half = (Math.abs(currentNeeded) + 0.5) / rate / 2;
+	const one = (Math.abs(currentNeeded) + 1) / rate;
+
 	document.getElementById('needed').innerText = currentNeeded.toFixed(3);
 	document.getElementById('totalGiven').innerText = totalGiven.toFixed(3);
 	document.getElementById('totalNeeded').innerText = totalNeeded.toFixed(3);
+	document.getElementById('half').innerText = half.toFixed(1);
+	document.getElementById('one').innerText = one.toFixed(1);
 }
 
 function quickAdd(amount) {
@@ -153,6 +158,7 @@ function plotDosageGraph(events, canvasContainerId) {
 					data: data.recommendedIntake,
 					borderColor: 'rgba(75, 192, 192, 1)',
 					pointBackgroundColor: 'rgb(0, 0, 0)',
+					fill: true,
 				},
 			],
 		},
