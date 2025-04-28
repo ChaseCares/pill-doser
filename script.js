@@ -24,7 +24,7 @@ function updateStatistics() {
 	const totalNeeded = rate * calculateHoursBetween(startDate, new Date());
 	const currentNeeded = totalNeeded - totalGiven;
 
-	const half = (Math.abs(currentNeeded) + 0.5) / rate / 2;
+	const half = (Math.abs(currentNeeded) + 0.5) / rate;
 	const one = (Math.abs(currentNeeded) + 1) / rate;
 
 	document.getElementById('needed').innerText = currentNeeded.toFixed(3);
