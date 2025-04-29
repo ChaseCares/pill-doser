@@ -208,6 +208,15 @@ function plotDosageGraph(events, canvasContainerId) {
 }
 
 function calculatePlotData(events) {
+	if (events.length === 0) {
+		return {
+			labels: [],
+			recommendedIntake: [],
+			actualRate: [],
+			lastEventToCurrent: [],
+		};
+	}
+
 	startDate = new Date(events[0].dosageTime);
 
 	let data = {
@@ -224,6 +233,8 @@ function calculatePlotData(events) {
 			data.labels.push(new Date(events[i].dosageTime));
 			data.recommendedIntake.push(0);
 			totalDosage += parseFloat(events[i].dosageAmount);
+			data.labels.push(new Date(events[i].dosageTime));
+			data.recommendedIntake.push(-totalDosage);
 		} else {
 			const eventTime = new Date(events[i].dosageTime);
 			const hoursDiff = calculateHoursBetween(startDate, eventTime);
