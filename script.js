@@ -18,6 +18,7 @@ events.forEach(addEvent);
 plotDosageGraph(events, 'dosageChart');
 
 updateStatistics();
+implementTestData();
 
 function updateStatistics() {
 	const totalGiven = events.reduce((sum, event) => sum + parseFloat(event.dosageAmount), 0);
@@ -266,7 +267,19 @@ function calculateHoursBetween(date1, date2) {
 	return diffHours;
 }
 
-function addTestData(testType) {
+function implementTestData() {
+	const currentURL = window.location.href;
+	if (currentURL.includes('127.0.0.1') || currentURL.includes('localhost')) {
+		const testDataContainer = document.getElementById('testDataContainer');
+		testDataContainer.innerHTML = `
+			<h3>Test data</h3>
+			<input type="button" value="Clear all" onclick="localStorage.clear()" />
+			<input type="button" value="1 pill every 12 hours for 7 days" onclick="populateTestData('1x12')" />
+		`;
+	}
+}
+
+function populateTestData(testType) {
 	if (testType === '1x12') {
 		const startDate = new Date();
 		startDate.setDate(startDate.getDate() - 7);
