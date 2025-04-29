@@ -212,6 +212,7 @@ function calculatePlotData(events) {
 		if (i === 0) {
 			data.labels.push(new Date(events[i].dosageTime));
 			data.recommendedIntake.push(0);
+			totalDosage += parseFloat(events[i].dosageAmount);
 		} else {
 			const eventTime = new Date(events[i].dosageTime);
 			const hoursDiff = calculateHoursBetween(startDate, eventTime);
