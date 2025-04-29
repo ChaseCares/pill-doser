@@ -203,6 +203,7 @@ function calculatePlotData(events) {
 		labels: [],
 		recommendedIntake: [],
 		actualRate: [],
+		lastEventToCurrent: [],
 	};
 
 	let totalDosage = 0;
@@ -228,6 +229,13 @@ function calculatePlotData(events) {
 			data.recommendedIntake.push(DosageNeeded);
 		}
 	}
+
+	const now = new Date();
+	const lastEventTime = new Date(events[events.length - 1].dosageTime);
+	const hoursDiff = calculateHoursBetween(lastEventTime, now);
+	const recommendedIntake = rate * hoursDiff;
+	data.labels.push(now);
+	data.recommendedIntake.push(recommendedIntake);
 
 	return data;
 }
