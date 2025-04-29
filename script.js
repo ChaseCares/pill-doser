@@ -134,7 +134,7 @@ function addEvent(event) {
 	});
 	row.innerHTML = `
 				<td>${event.dosageAmount}</td>
-				<td data-rawTime="${event.dosageTime}" >${fmttedTime} <input type="button" value="X" onclick="remove(this)" /></td>`;
+				<td data-rawTime="${event.dosageTime}" >${fmttedTime} <input type="button" value="X" onclick="removeDosageEntry(this)" /></td>`;
 	tbody.appendChild(row);
 }
 
