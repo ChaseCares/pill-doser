@@ -97,6 +97,7 @@ function addNewEvent() {
 	if (dosageAmount && dosageTime) {
 		const event = { dosageAmount, dosageTime };
 		events.push(event);
+		events.sort((a, b) => new Date(a.dosageTime) - new Date(b.dosageTime));
 		save_value('events', JSON.stringify(events));
 		addEvent(event);
 	}
@@ -133,8 +134,17 @@ function addEvent(event) {
 	});
 	row.innerHTML = `
 				<td>${event.dosageAmount}</td>
-				<td>${fmttedTime}</td>`;
+				<td data-rawTime="${event.dosageTime}" >${fmttedTime} <input type="button" value="X" onclick="remove(this)" /></td>`;
 	tbody.appendChild(row);
+}
+
+function removeDosageEntry(event) {
+	const row = event.parentElement;
+	const dosageTime = row.getAttribute('data-rawTime');
+	events = events.filter((e) => e.dosageTime !== dosageTime);
+	save_value('events', JSON.stringify(events));
+	row.parentElement.remove();
+	plotDosageGraph(events, 'dosageChart');
 }
 
 function save_value(key, value) {
