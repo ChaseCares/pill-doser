@@ -201,7 +201,7 @@ function calculatePlotData(events) {
 	let totalDosage = 0;
 	const startDate = new Date(events[0].dosageTime);
 
-	events.forEach((e, i) => {
+	events.forEach((e, _) => {
 		const time = new Date(e.dosageTime);
 		const hours = calculateHoursBetween(startDate, time);
 		const needed = rate * hours;
