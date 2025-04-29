@@ -216,9 +216,11 @@ function calculatePlotData(events) {
 	});
 
 	const now = new Date();
-	const last = new Date(events.at(-1).dosageTime);
+	const lastDosageTime = new Date(events.at(-1).dosageTime);
+	const hoursSinceLast = calculateHoursBetween(lastDosageTime, now);
+	const lastNeeded = rate * (hoursSinceLast + calculateHoursBetween(startDate, lastDosageTime));
 	labels.push(now);
-	recommendedIntake.push(rate * calculateHoursBetween(last, now));
+	recommendedIntake.push(lastNeeded - totalDosage);
 
 	return { labels, recommendedIntake };
 }
