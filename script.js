@@ -40,8 +40,8 @@ function updateStatistics() {
 	setStat('totalGiven', totalGiven.toFixed(3));
 	setStat('totalNeeded', totalNeeded.toFixed(3));
 
-	const half = (Math.abs(currentNeeded) + 0.5) / rate;
-	const one = (Math.abs(currentNeeded) + 1) / rate;
+	const half = (0.5 - currentNeeded) / rate;
+	const one = (1 - currentNeeded) / rate;
 
 	setStat('half', half.toFixed(1));
 	setStat('half_time', formatTimeOffset(half));
