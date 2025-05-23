@@ -5,13 +5,11 @@ const PILLS_KEY = 'pills';
 const HOUR_KEY = 'hour';
 const DEFAULT_PILLS = 1;
 const DEFAULT_HOUR = 8;
-const TIME_ZONE = 'America/New_York'; // Consider making this configurable if needed
 const LOCALE = 'en-US'; // Consider making this configurable
 
 // --- DOM Element Selectors ---
 const $ = (id) => document.getElementById(id);
 
-const mainContainer = $('mainContainer');
 const pillsElement = $(PILLS_KEY);
 const hourElement = $(HOUR_KEY);
 const rateElement = $('rate');
@@ -24,7 +22,24 @@ const dosageChartContainer = $('dosageChart');
 // --- Utility Functions ---
 const saveToLocalStorage = (key, value) => localStorage.setItem(key, value);
 const loadFromLocalStorage = (key) => localStorage.getItem(key);
-const getLocalNow = () => new Date(new Date().toLocaleString(LOCALE, { timeZone: TIME_ZONE }));
+
+let time_zone = loadFromLocalStorage('time_zone');
+if (!time_zone) {
+	time_zone = prompt('Enter your time zone (e.g., America/New_York):');
+	if (!time_zone) {
+		alert('Time zone is required to run the application.');
+		throw new Error('Time zone is required.');
+	}
+
+	if (!isValidIANATimeZone(time_zone)) {
+		alert('Invalid time zone format. Please enter a valid IANA time zone.');
+		throw new Error('Invalid time zone format.');
+	}
+
+	saveToLocalStorage('time_zone', time_zone);
+}
+
+const getLocalNow = () => new Date(new Date().toLocaleString(LOCALE, { timeZone: time_zone }));
 
 const formatDateTime = (dateString) => {
 	return new Date(dateString).toLocaleString(LOCALE, {
@@ -33,17 +48,29 @@ const formatDateTime = (dateString) => {
 		day: '2-digit',
 		hour: '2-digit',
 		minute: '2-digit',
-		timeZone: TIME_ZONE,
+		timeZone: time_zone,
 	});
 };
 
 const formatTimeOffset = (hoursOffset) => {
 	return new Date(Date.now() + hoursOffset * 3600000).toLocaleString(LOCALE, {
-		timeZone: TIME_ZONE,
+		timeZone: time_zone,
 		hour: '2-digit',
 		minute: '2-digit',
 	});
 };
+
+function isValidIANATimeZone(timeZone) {
+	if (!timeZone || typeof timeZone !== 'string') {
+		return false;
+	}
+	try {
+		Intl.DateTimeFormat(undefined, { timeZone: timeZone });
+		return true;
+	} catch (ex) {
+		return false;
+	}
+}
 
 const calculateHoursBetween = (date1, date2) => {
 	const d1 = new Date(date1);
@@ -69,7 +96,6 @@ if (!GOOGLE_SHEET_ID) {
 	}
 	saveToLocalStorage(GOOGLE_SHEET_ID_KEY, GOOGLE_SHEET_ID);
 }
-mainContainer.style.display = 'block'; // Show main container after ID is set
 
 const WEB_APP_URL = `https://script.google.com/macros/s/${GOOGLE_SHEET_ID}/exec`;
 
@@ -105,6 +131,7 @@ async function fetchFromSheet(action, params = {}) {
 }
 
 const getEventsFromSheet = async () => {
+	// return [];
 	const result = await fetchFromSheet('get');
 	return result.success ? result.data : [];
 };
@@ -118,6 +145,27 @@ const removeEventFromSheet = async (dateToRemove) => {
 };
 
 // --- UI Update Functions ---
+function updateTimeDisplay() {
+	const timeCheckNowDiv = $('timeCheckNow');
+	const timeZoneDiv = $('timeZone');
+	timeZoneDiv.innerText = `Time Zone: ${time_zone}`;
+	const localCode = $('localCode');
+	localCode.innerText = `Local Code: ${LOCALE}`;
+
+	const now = getLocalNow();
+	const formattedTime = now.toLocaleString(LOCALE, {
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		timeZone: time_zone,
+	});
+	timeCheckNowDiv.innerText = `Current DateTime: ${formattedTime}`;
+}
+setInterval(updateTimeDisplay, 60000); // Update every minute
+updateTimeDisplay(); // Initial call to set time immediately
+
 function setOverlayVisibility(show) {
 	overlay.style.display = show ? 'block' : 'none';
 }
