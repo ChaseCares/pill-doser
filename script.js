@@ -1,35 +1,69 @@
 const $ = (id) => document.getElementById(id);
 
+const mainContainer = $('mainContainer');
+
+const ID = load_value('googleSheetID') || prompt('Enter your Google Sheet ID:');
+if (!ID) {
+	alert('Google Sheet ID is required.');
+	throw new Error('Google Sheet ID is required.');
+} else {
+	save_value('googleSheetID', ID);
+	mainContainer.style.display = 'block';
+}
+
+const webAppUrl = `https://script.google.com/macros/s/${ID}/exec`;
+
 const pillsElement = $('pills');
 const hourElement = $('hour');
 const rateElement = $('rate');
 
-let numberOfEvents = load_value('numberOfEvents') ?? 0;
+const timeZone = 'America/New_York';
+const local = 'en-US';
+
 let rate = parseFloat(load_value('rate')) || 0;
-let events = JSON.parse(load_value('events') || '[]');
+
+getDatesAndFloatsFromSheet().then((data) => {
+	const events = data.map((e) => ({
+		dosageAmount: e.value,
+		dosageTime: e.date,
+	}));
+	events.forEach((e) => {
+		populateEvent(e.dosageAmount, e.dosageTime);
+	});
+	plotDosageGraph(events, 'dosageChart');
+	updateStatistics(events);
+	setOverlayVisibility();
+});
 
 initInput(pillsElement, 'pills', 1);
 initInput(hourElement, 'hour', 8);
 
 updateRate();
-updateStatistics();
-implementTestData();
 
 ['pills', 'hour'].forEach((id) => $(id).addEventListener('input', () => handleInputChange(id)));
 
-events.forEach(addEvent);
-plotDosageGraph(events, 'dosageChart');
+function setOverlayVisibility(state = 'hide') {
+	const overlay = $('overlay');
+	if (state === 'show') {
+		overlay.style.display = 'block';
+	} else if (state === 'hide') {
+		overlay.style.display = 'none';
+	}
+}
 
-// --- Functions ---
+function localNow() {
+	return new Date(new Date().toLocaleString(local, { timeZone: timeZone }));
+}
 
-function updateStatistics() {
+function updateStatistics(events) {
 	const totalGiven = events.reduce((sum, e) => sum + parseFloat(e.dosageAmount), 0);
-	const startDate = events.length > 0 ? new Date(events[0].dosageTime) : new Date();
-	const totalNeeded = rate * calculateHoursBetween(startDate, new Date());
+	const startDate = events.length > 0 ? new Date(events[0].dosageTime) : localNow();
+	const totalNeeded = rate * calculateHoursBetween(startDate, localNow());
 	const currentNeeded = totalNeeded - totalGiven;
 
 	const formatTimeOffset = (hoursOffset) =>
-		new Date(Date.now() + hoursOffset * 3600000).toLocaleString('en-US', {
+		new Date(Date.now() + hoursOffset * 3600000).toLocaleString(local, {
+			timeZone: timeZone,
 			hour: '2-digit',
 			minute: '2-digit',
 		});
@@ -49,15 +83,14 @@ function updateStatistics() {
 	setStat('one_time', formatTimeOffset(one));
 }
 
-function quickAdd(amount) {
-	const now = new Date().toISOString();
-	const event = { dosageAmount: amount, dosageTime: now };
-
-	events.push(event);
-	saveEvents();
-	addEvent(event);
-	plotDosageGraph(events, 'dosageChart');
-	updateStatistics();
+function formatTime(dosageTime) {
+	return new Date(dosageTime).toLocaleString('en-US', {
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+	});
 }
 
 function initInput(element, key, defaultValue) {
@@ -84,26 +117,33 @@ function updateRate() {
 		rate = 0;
 		rateElement.innerText = '';
 	}
-
-	updateStatistics();
 }
 
-function addNewEvent() {
-	const amount = $('dosage_amount').value;
-	const time = $('new_event_datetime').value;
+function addNewEvent(quickAmount) {
+	setOverlayVisibility('show');
+	if (quickAmount) {
+		const now = localNow();
+		try {
+			addDateAndFloatToSheet(now, quickAmount);
+		} catch (error) {
+			console.error('Error adding quick amount:', error);
+		}
+	} else {
+		const amount = $('dosage_amount').value;
+		const time = new Date($('new_event_datetime').value);
 
-	if (amount && time) {
-		const event = { dosageAmount: amount, dosageTime: time };
-		events.push(event);
-		events.sort((a, b) => new Date(a.dosageTime) - new Date(b.dosageTime));
-		saveEvents();
-		addEvent(event);
-		plotDosageGraph(events, 'dosageChart');
-		updateStatistics();
+		if (amount && time) {
+			try {
+				addDateAndFloatToSheet(time, amount);
+			} catch (error) {
+				console.error('Error adding amount:', error);
+			}
+		}
 	}
+	setOverlayVisibility('hide');
 }
 
-function addEvent(event) {
+function populateEvent(dosageAmount, dosageTime) {
 	const container = $('add_events');
 	let table = container.querySelector('table');
 
@@ -116,37 +156,26 @@ function addEvent(event) {
 	}
 
 	const row = document.createElement('tr');
-	const formattedTime = new Date(event.dosageTime).toLocaleString('en-US', {
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-	});
+	const formattedTime = formatTime(dosageTime);
 
 	row.innerHTML = `
-		<td>${event.dosageAmount}</td>
-		<td data-rawTime="${event.dosageTime}">
+		<td>${dosageAmount}</td>
+		<td data-rawTime="${dosageTime}">
 		${formattedTime} <input type="button" value="X" onclick="removeDosageEntry(this)" />
 		</td>`;
 	table.querySelector('tbody').appendChild(row);
 }
 
 function removeDosageEntry(btn) {
+	setOverlayVisibility('show');
 	const row = btn.closest('tr');
-	const dosageTime = row.querySelector('td[data-rawTime]')?.getAttribute('data-rawTime');
+	const dosageTime = new Date(row.querySelector('td[data-rawTime]')?.getAttribute('data-rawTime'));
+	console.log('dosageTime', dosageTime);
 
 	if (!dosageTime) return;
-
-	events = events.filter((e) => e.dosageTime !== dosageTime);
-	saveEvents();
+	removeDateFromSheet(dosageTime);
 	row.remove();
-	plotDosageGraph(events, 'dosageChart');
-	updateStatistics();
-}
-
-function saveEvents() {
-	save_value('events', JSON.stringify(events));
+	setOverlayVisibility('hide');
 }
 
 function save_value(key, value) {
@@ -158,8 +187,8 @@ function load_value(key) {
 }
 
 function setTime(id) {
-	const now = new Date();
-	now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+	const now = localNow();
+
 	$(id).value = now.toISOString().slice(0, 16);
 }
 
@@ -215,7 +244,7 @@ function calculatePlotData(events) {
 		recommendedIntake.push(rate * hours - totalDosage);
 	});
 
-	const now = new Date();
+	const now = localNow();
 	const lastDosageTime = new Date(events.at(-1).dosageTime);
 	const hoursSinceLast = calculateHoursBetween(lastDosageTime, now);
 	const lastNeeded = rate * (hoursSinceLast + calculateHoursBetween(startDate, lastDosageTime));
@@ -228,34 +257,58 @@ function calculatePlotData(events) {
 function calculateHoursBetween(date1, date2) {
 	const d1 = new Date(date1);
 	const d2 = new Date(date2);
-	return Math.abs(d2 - d1) / 36e5; // 36e5 = 3600000 ms = 1 hour
+	return Math.abs(d2 - d1) / 36e5;
 }
 
-function implementTestData() {
-	const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-	if (!isDev) return;
-
-	$('testDataContainer').innerHTML = `
-		<h3>Test data</h3>
-		<input type="button" value="Clear all" onclick="localStorage.clear()" />
-		<input type="button" value="1 pill every 12 hours for 7 days" onclick="populateTestData('1x12')" />`;
-}
-
-function populateTestData(testType) {
-	if (testType !== '1x12') return;
-
-	const start = new Date();
-	start.setDate(start.getDate() - 7);
-	start.setHours(8, 0, 0, 0);
-	save_value('startTime', start.toISOString().slice(0, 16));
-	start.setDate(start.getDate() + 1);
-	start.setHours(0, 0, 0, 0);
-
-	const testData = Array.from({ length: 13 }, (_, i) => ({
-		dosageAmount: i % 2 === 0 ? '1' : '0.5',
-		dosageTime: new Date(start.getTime() + i * 12 * 3600000).toISOString(),
-	}));
-
-	save_value('events', JSON.stringify(testData));
+function triggerRefresh() {
 	location.reload();
+}
+
+async function addDateAndFloatToSheet(date, floatValue) {
+	try {
+		const response = await fetch(
+			`${webAppUrl}?action=add&date=${encodeURIComponent(date)}&floatValue=${encodeURIComponent(
+				floatValue
+			)}`,
+			{
+				method: 'POST',
+			}
+		);
+		const data = await response.json();
+		return data;
+	} catch (error) {
+		console.error('Error adding data:', error);
+		return { success: false, error: error.message };
+	}
+}
+
+async function getDatesAndFloatsFromSheet() {
+	// return [];
+	try {
+		const response = await fetch(`${webAppUrl}?action=get`);
+		const data = await response.json();
+		if (data.success) {
+			return data.data;
+		} else {
+			console.error('Error getting data:', data.error);
+			return [];
+		}
+	} catch (error) {
+		console.error('Error getting data:', error);
+		return [];
+	}
+}
+
+async function removeDateFromSheet(dateToRemove) {
+	try {
+		const response = await fetch(
+			`${webAppUrl}?action=remove&date=${encodeURIComponent(dateToRemove)}`,
+			{ method: 'POST' }
+		);
+		const data = await response.json();
+		return data;
+	} catch (error) {
+		console.error('Error removing date:', error);
+		return { success: false, error: error.message };
+	}
 }

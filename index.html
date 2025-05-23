@@ -6,78 +6,94 @@
 		<link href="./img/favicon.ico" rel="icon" type="image/x-icon" />
 
 		<title>Dosage Helper</title>
+
+		<style>
+			#overlay {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background: rgba(0, 0, 0, 0.5);
+				opacity: 0.5;
+				z-index: 1000;
+				justify-content: center;
+				align-items: center;
+			}
+		</style>
 	</head>
 	<body>
+		<div id="overlay"></div>
 		<h1>! Testing do not used for people or pets !</h1>
 		<h2>Dosage Helper</h2>
+		<div id="timeDiv"></div>
 
-		<input type="number" id="pills" step="0.1" />
-		<label for="pills">pill(s)</label>
+		<div id="mainContainer" style="display: none">
+			<input type="number" id="pills" step="0.1" />
+			<label for="pills">pill(s)</label>
 
-		<label for="hour">per</label>
-		<input type="number" id="hour" />
-		<span>hour(s)</span>
+			<label for="hour">per</label>
+			<input type="number" id="hour" />
+			<span>hour(s)</span>
 
-		<h3>
-			Rate:
-			<span id="rate"></span>
-		</h3>
+			<h3>
+				Rate:
+				<span id="rate"></span>
+			</h3>
 
-		<h2>Administer events</h2>
-		<table id="add_events"></table>
+			<h2>Administer events</h2>
+			<table id="add_events"></table>
+			<hr />
+			<input type="button" value="add 2 now" onclick="addNewEvent(2)" />
+			<input type="button" value="add 1 now" onclick="addNewEvent(1)" />
+			<input type="button" value="add 0.5 now" onclick="addNewEvent(0.5)" />
+			<br />
 
-		<hr />
-		<input type="button" value="add 2 now" onclick="quickAdd(2)" />
-		<input type="button" value="add 1 now" onclick="quickAdd(1)" />
-		<input type="button" value="add 0.5 now" onclick="quickAdd(0.5)" />
-		<br />
+			<h4>Custom event</h4>
+			<label for="dosage_amount">Dosage amount:</label>
+			<input type="number" name="Dosage amount" id="dosage_amount" step="0.1" />
+			<br />
 
-		<h4>Custom event</h4>
-		<label for="dosage_amount">Dosage amount:</label>
-		<input type="number" name="Dosage amount" id="dosage_amount" step="0.1" />
-		<br />
+			<label for="dosage_time">Dosage time:</label>
+			<input type="datetime-local" name="new_event" id="new_event_datetime" />
+			<input type="button" value="Now" onclick="setTime('new_event_datetime')" />
+			<input type="button" value="add event" onclick="addNewEvent()" />
+			<div id="testDataContainer"></div>
 
-		<label for="dosage_time">Dosage time:</label>
-		<input type="datetime-local" name="new_event" id="new_event_datetime" />
-		<input type="button" value="Now" onclick="setTime('new_event_datetime')" />
-		<input type="button" value="add event" onclick="addNewEvent()" />
+			<h3>Statistics</h3>
+			<table>
+				<tr>
+					<th>Total given</th>
+					<th id="totalGiven"></th>
+				</tr>
+				<tr>
+					<th>Total needed</th>
+					<th id="totalNeeded"></th>
+				</tr>
+				<tr>
+					<th>Current amount needed</th>
+					<th id="needed"></th>
+				</tr>
+				<tr>
+					<th>0.5 needed in</th>
+					<th>
+						<span id="half"></span>
+						hr
+						<span id="half_time"></span>
+					</th>
+				</tr>
+				<tr>
+					<th>1 needed in</th>
+					<th>
+						<span id="one"></span>
+						hr
+						<span id="one_time"></span>
+					</th>
+				</tr>
+			</table>
 
-		<div id="testDataContainer"></div>
-
-		<h3>Statistics</h3>
-		<table>
-			<tr>
-				<th>Total given</th>
-				<th id="totalGiven"></th>
-			</tr>
-			<tr>
-				<th>Total needed</th>
-				<th id="totalNeeded"></th>
-			</tr>
-			<tr>
-				<th>Current amount needed</th>
-				<th id="needed"></th>
-			</tr>
-			<tr>
-				<th>0.5 needed in</th>
-				<th>
-					<span id="half"></span>
-					hr
-					<span id="half_time"></span>
-				</th>
-			</tr>
-			<tr>
-				<th>1 needed in</th>
-				<th>
-					<span id="one"></span>
-					hr
-					<span id="one_time"></span>
-				</th>
-			</tr>
-		</table>
-
-		<div id="dosageChart"></div>
-
+			<div id="dosageChart"></div>
+		</div>
 		<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 		<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 		<script src="./script.js"></script>
