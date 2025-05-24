@@ -26,7 +26,7 @@
 		<h2>Check time before use!!</h2>
 		<div>
 			<div id="timeCheckNow"></div>
-			<div id="timeZone"></div>
+			<div id="timeZoneDisplay"></div>
 			<div id="localCode"></div>
 		</div>
 
@@ -58,7 +58,7 @@
 
 			<label for="dosage_time">Dosage time:</label>
 			<input type="datetime-local" name="new_event" id="new_event_datetime" />
-			<input type="button" value="Now" onclick="setTime('new_event_datetime')" />
+			<input type="button" value="Now" onclick="setTimeOnField('new_event_datetime')" />
 			<input type="button" value="add event" onclick="addNewEvent()" />
 			<div id="testDataContainer"></div>
 
@@ -97,7 +97,8 @@
 			<div id="dosageChart"></div>
 		</div>
 		<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
-		<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+		<script src=" https://cdn.jsdelivr.net/npm/luxon@3.6.1/build/global/luxon.min.js "></script>
+		<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@^1"></script>
 		<script src="./script.js"></script>
 	</body>
 </html>
