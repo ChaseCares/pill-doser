@@ -70,7 +70,7 @@ const formatDateTime = (dateInput) => {
 	if (dateInput instanceof luxon.DateTime) {
 		dt = dateInput;
 	} else if (typeof dateInput === 'string') {
-		dt = luxon.DateTime.fromISO(dateInput); // Assumes ISO string from storage/API is UTC or has offset
+		dt = luxon.DateTime.fromISO(dateInput);
 	} else if (dateInput instanceof Date) {
 		dt = luxon.DateTime.fromJSDate(dateInput);
 	}
@@ -83,7 +83,6 @@ const formatDateTime = (dateInput) => {
 		);
 		return 'Invalid Date';
 	}
-	// Always display in the user's chosen timeZone
 	return dt.setZone(timeZone).toFormat('MM/dd/yyyy, hh:mm a', { locale: LOCALE });
 };
 
@@ -107,7 +106,7 @@ const calculateHoursBetween = (dateTime1Input, dateTime2Input) => {
 	const toLuxonDT = (input) => {
 		if (input instanceof luxon.DateTime) return input.isValid ? input : null;
 		if (typeof input === 'string') {
-			const parsed = luxon.DateTime.fromISO(input); // Handles UTC or offsetted ISO
+			const parsed = luxon.DateTime.fromISO(input);
 			return parsed.isValid ? parsed : null;
 		}
 		if (input instanceof Date) {
@@ -136,7 +135,7 @@ const calculateHoursBetween = (dateTime1Input, dateTime2Input) => {
 
 // --- Application State ---
 let currentRate = parseFloat(loadFromLocalStorage(RATE_KEY)) || 0;
-let eventsData = []; // Stores event data locally { dosageAmount: number, dosageTime: string (ISO) }
+let eventsData = [];
 
 // --- Google Sheet API Interaction ---
 let googleSheetID = loadFromLocalStorage(GOOGLE_SHEET_ID_KEY);
@@ -190,12 +189,10 @@ const getEventsFromSheet = async () => {
 	return result.success ? result.data : [];
 };
 
-// Expects a Luxon DateTime object
 const addEventToSheet = async (luxonDateTime, floatValue) => {
 	return fetchFromSheet('add', { date: luxonDateTime.toISO(), floatValue: floatValue.toString() });
 };
 
-// Expects a Luxon DateTime object
 const removeEventFromSheet = async (luxonDateTimeToRemove) => {
 	return fetchFromSheet('remove', { date: luxonDateTimeToRemove.toISO() });
 };
@@ -209,7 +206,7 @@ function updateTimeDisplay() {
 	if (timeZoneDiv) timeZoneDiv.innerText = `Time Zone: ${timeZone}`;
 	if (localCodeDiv) localCodeDiv.innerText = `Locale: ${LOCALE}`;
 
-	const now = getLocalNow(); // Luxon DateTime in target zone
+	const now = getLocalNow();
 	if (timeCheckNowDiv) timeCheckNowDiv.innerText = `Current DateTime: ${formatDateTime(now)}`;
 }
 
@@ -257,7 +254,6 @@ function updateStatisticsDisplay(events) {
 
 	const totalGiven = events.reduce((sum, e) => sum + (parseFloat(e.dosageAmount) || 0), 0);
 
-	// Use Luxon DateTime objects for calculations
 	const firstEventDT = events.length > 0 ? luxon.DateTime.fromISO(events[0].dosageTime) : null;
 	const nowDT = getLocalNow();
 
@@ -389,7 +385,6 @@ function plotDosageGraph(events) {
 		},
 		options: {
 			responsive: true,
-			// maintainAspectRatio: false,
 			scales: {
 				x: {
 					type: 'time',
@@ -538,11 +533,11 @@ function handleInputChange(storageKey) {
 
 async function addNewEventHandler(quickAmount) {
 	let amount;
-	let eventTimeDT; // Luxon DateTime
+	let eventTimeDT;
 
 	if (quickAmount && !isNaN(parseFloat(quickAmount))) {
 		amount = parseFloat(quickAmount);
-		eventTimeDT = getLocalNow(); // Already in target zone
+		eventTimeDT = getLocalNow();
 	} else {
 		if (!dosageAmountInput || !newEventDatetimeInput) {
 			alert('Input fields not found.');
@@ -574,10 +569,9 @@ async function addNewEventHandler(quickAmount) {
 
 	setOverlayVisibility(true);
 	try {
-		// addEventToSheet expects a Luxon DateTime
 		const result = await addEventToSheet(eventTimeDT, amount);
 		if (result.success) {
-			const newEvent = { dosageAmount: amount, dosageTime: eventTimeDT.toISO() }; // Store as ISO
+			const newEvent = { dosageAmount: amount, dosageTime: eventTimeDT.toISO() };
 			eventsData.push(newEvent);
 			eventsData.sort(
 				(a, b) =>
@@ -689,7 +683,6 @@ async function initializeApp() {
 		const element = $(elementId);
 		if (element && element instanceof HTMLInputElement) {
 			const nowDT = getLocalNow(); // Luxon DateTime in target zone
-			// Format for datetime-local input: "yyyy-MM-dd'T'HH:mm"
 			element.value = nowDT.toFormat("yyyy-MM-dd'T'HH:mm");
 		} else {
 			console.warn(`Element with ID '${elementId}' not found or not an input.`);
@@ -710,7 +703,7 @@ async function initializeApp() {
 				)
 				.map((e) => ({
 					dosageAmount: parseFloat(e.value),
-					dosageTime: luxon.DateTime.fromISO(e.date).toISO(), // Standardize to Luxon-generated ISO
+					dosageTime: luxon.DateTime.fromISO(e.date).toISO(),
 				}))
 				.sort(
 					(a, b) =>
