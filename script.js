@@ -3,9 +3,10 @@ const GOOGLE_SHEET_ID_KEY = 'googleSheetID';
 const RATE_KEY = 'rate';
 const PILLS_KEY = 'pills';
 const HOUR_KEY = 'hour';
+const TIME_ZONE_KEY = 'timeZone';
 const DEFAULT_PILLS = 1;
 const DEFAULT_HOUR = 8;
-const LOCALE = 'en-US'; // Consider making this configurable
+const LOCALE = 'en-US';
 
 // --- DOM Element Selectors ---
 const $ = (id) => document.getElementById(id);
@@ -23,97 +24,149 @@ const dosageChartContainer = $('dosageChart');
 const saveToLocalStorage = (key, value) => localStorage.setItem(key, value);
 const loadFromLocalStorage = (key) => localStorage.getItem(key);
 
-let time_zone = loadFromLocalStorage('time_zone');
-if (!time_zone) {
-	time_zone = prompt('Enter your time zone (e.g., America/New_York):');
-	if (!time_zone) {
+/**
+ * Validates if a string is a valid IANA time zone using Luxon.
+ * @param {string} timeZoneString - The time zone string to validate.
+ * @returns {boolean} True if valid, false otherwise.
+ */
+function isValidIANATimeZone(timeZoneString) {
+	if (!timeZoneString || typeof timeZoneString !== 'string') {
+		return false;
+	}
+	return luxon.DateTime.local().setZone(timeZoneString).isValid;
+}
+
+let timeZone = loadFromLocalStorage(TIME_ZONE_KEY);
+if (!timeZone) {
+	timeZone = prompt(
+		`Enter your time zone (e.g., America/New_York, Europe/London, Asia/Tokyo): Current detected system zone is approx ${
+			luxon.DateTime.local().zoneName
+		}`
+	);
+	if (!timeZone) {
 		alert('Time zone is required to run the application.');
 		throw new Error('Time zone is required.');
 	}
-
-	if (!isValidIANATimeZone(time_zone)) {
-		alert('Invalid time zone format. Please enter a valid IANA time zone.');
-		throw new Error('Invalid time zone format.');
+	if (!isValidIANATimeZone(timeZone)) {
+		alert(`Invalid time zone format: "${timeZone}". Please enter a valid IANA time zone.`);
+		throw new Error('Invalid time zone format. Provided: ' + timeZone);
 	}
-
-	saveToLocalStorage('time_zone', time_zone);
+	saveToLocalStorage(TIME_ZONE_KEY, timeZone);
 }
 
-const getLocalNow = () => new Date(new Date().toLocaleString(LOCALE, { timeZone: time_zone }));
+/**
+ * Gets the current date and time as a Luxon DateTime object in the configured time zone.
+ * @returns {luxon.DateTime}
+ */
+const getLocalNow = () => luxon.DateTime.now().setZone(timeZone);
 
-const formatDateTime = (dateString) => {
-	return new Date(dateString).toLocaleString(LOCALE, {
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		timeZone: time_zone,
-	});
+/**
+ * Formats a date input (Luxon DateTime, ISO string, or JS Date) into a localized string.
+ * @param {luxon.DateTime | string | Date} dateInput - The date input.
+ * @returns {string} Formatted date-time string.
+ */
+const formatDateTime = (dateInput) => {
+	let dt;
+	if (dateInput instanceof luxon.DateTime) {
+		dt = dateInput;
+	} else if (typeof dateInput === 'string') {
+		dt = luxon.DateTime.fromISO(dateInput); // Assumes ISO string from storage/API is UTC or has offset
+	} else if (dateInput instanceof Date) {
+		dt = luxon.DateTime.fromJSDate(dateInput);
+	}
+
+	if (!dt || !dt.isValid) {
+		console.warn(
+			'Invalid dateInput for formatDateTime:',
+			dateInput,
+			dt ? dt.invalidReason : 'Unknown input type'
+		);
+		return 'Invalid Date';
+	}
+	// Always display in the user's chosen timeZone
+	return dt.setZone(timeZone).toFormat('MM/dd/yyyy, hh:mm a', { locale: LOCALE });
 };
 
+/**
+ * Formats a time based on an offset from now.
+ * @param {number} hoursOffset - The offset in hours from the current time.
+ * @returns {string} Formatted time string (e.g., "03:45 PM").
+ */
 const formatTimeOffset = (hoursOffset) => {
-	return new Date(Date.now() + hoursOffset * 3600000).toLocaleString(LOCALE, {
-		timeZone: time_zone,
-		hour: '2-digit',
-		minute: '2-digit',
-	});
+	const dtWithOffset = getLocalNow().plus({ hours: hoursOffset });
+	return dtWithOffset.toFormat('hh:mm a', { locale: LOCALE });
 };
 
-function isValidIANATimeZone(timeZone) {
-	if (!timeZone || typeof timeZone !== 'string') {
-		return false;
-	}
-	try {
-		Intl.DateTimeFormat(undefined, { timeZone: timeZone });
-		return true;
-	} catch (ex) {
-		return false;
-	}
-}
+/**
+ * Calculates the absolute difference in hours between two dates.
+ * @param {luxon.DateTime | string | Date} dateTime1Input
+ * @param {luxon.DateTime | string | Date} dateTime2Input
+ * @returns {number} Absolute hours between dates, or 0 if dates are invalid.
+ */
+const calculateHoursBetween = (dateTime1Input, dateTime2Input) => {
+	const toLuxonDT = (input) => {
+		if (input instanceof luxon.DateTime) return input.isValid ? input : null;
+		if (typeof input === 'string') {
+			const parsed = luxon.DateTime.fromISO(input); // Handles UTC or offsetted ISO
+			return parsed.isValid ? parsed : null;
+		}
+		if (input instanceof Date) {
+			const parsed = luxon.DateTime.fromJSDate(input);
+			return parsed.isValid ? parsed : null;
+		}
+		return null;
+	};
 
-const calculateHoursBetween = (date1, date2) => {
-	const d1 = new Date(date1);
-	const d2 = new Date(date2);
-	if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
-		console.warn('Invalid date provided to calculateHoursBetween:', date1, date2);
+	const dt1 = toLuxonDT(dateTime1Input);
+	const dt2 = toLuxonDT(dateTime2Input);
+
+	if (!dt1 || !dt1.isValid || !dt2 || !dt2.isValid) {
+		console.warn('Invalid date provided to calculateHoursBetween:', {
+			input1: dateTime1Input,
+			input2: dateTime2Input,
+			parsed1Valid: dt1 ? dt1.isValid : false,
+			parsed2Valid: dt2 ? dt2.isValid : false,
+			reason1: dt1 ? dt1.invalidReason : 'N/A',
+			reason2: dt2 ? dt2.invalidReason : 'N/A',
+		});
 		return 0;
 	}
-	return Math.abs(d2 - d1) / 36e5; // 36e5 is 1 hour in milliseconds
+	return Math.abs(dt2.diff(dt1, 'hours').hours);
 };
 
 // --- Application State ---
 let currentRate = parseFloat(loadFromLocalStorage(RATE_KEY)) || 0;
-let eventsData = []; // To store events data locally for reuse
+let eventsData = []; // Stores event data locally { dosageAmount: number, dosageTime: string (ISO) }
 
 // --- Google Sheet API Interaction ---
-let GOOGLE_SHEET_ID = loadFromLocalStorage(GOOGLE_SHEET_ID_KEY);
-if (!GOOGLE_SHEET_ID) {
-	GOOGLE_SHEET_ID = prompt('Enter your Google Sheet ID:');
-	if (!GOOGLE_SHEET_ID) {
+let googleSheetID = loadFromLocalStorage(GOOGLE_SHEET_ID_KEY);
+if (!googleSheetID) {
+	googleSheetID = prompt('Enter your Google Sheet ID:');
+	if (!googleSheetID) {
 		alert('Google Sheet ID is required to run the application.');
 		throw new Error('Google Sheet ID is required.');
 	}
-	saveToLocalStorage(GOOGLE_SHEET_ID_KEY, GOOGLE_SHEET_ID);
+	saveToLocalStorage(GOOGLE_SHEET_ID_KEY, googleSheetID);
 }
 
-const WEB_APP_URL = `https://script.google.com/macros/s/${GOOGLE_SHEET_ID}/exec`;
+const WEB_APP_URL = `https://script.google.com/macros/s/${googleSheetID}/exec`;
 
 async function fetchFromSheet(action, params = {}) {
 	setOverlayVisibility(true);
 	const url = new URL(WEB_APP_URL);
 	url.searchParams.append('action', action);
 	for (const key in params) {
-		url.searchParams.append(key, params[key]);
+		if (Object.hasOwnProperty.call(params, key)) {
+			url.searchParams.append(key, params[key]);
+		}
 	}
 
 	try {
 		const response = await fetch(url, {
-			method: action === 'get' ? 'GET' : 'POST', // Use GET for 'get' action, POST for others
-			// For POST, body might be needed if not using query params, but current setup uses query params
+			method: action === 'get' ? 'GET' : 'POST',
 		});
 		if (!response.ok) {
-			throw new Error(`HTTP error! status: ${response.status}`);
+			throw new Error(`HTTP error! status: ${response.status}, message: ${await response.text()}`);
 		}
 		const data = await response.json();
 		if (!data.success && data.error) {
@@ -123,51 +176,45 @@ async function fetchFromSheet(action, params = {}) {
 		return data;
 	} catch (error) {
 		console.error(`Failed to ${action} data:`, error);
-		alert(`Failed to ${action} data. Please check your connection and Sheet ID.`);
-		return { success: false, error: error.message, data: [] }; // Return empty data on failure
+		alert(
+			`Failed to ${action} data. Please check your connection, Sheet ID, and script deployment. Details: ${error.message}`
+		);
+		return { success: false, error: error.message, data: [] };
 	} finally {
 		setOverlayVisibility(false);
 	}
 }
 
 const getEventsFromSheet = async () => {
-	// return [];
 	const result = await fetchFromSheet('get');
 	return result.success ? result.data : [];
 };
 
-const addEventToSheet = async (date, floatValue) => {
-	return fetchFromSheet('add', { date: date.toISOString(), floatValue });
+// Expects a Luxon DateTime object
+const addEventToSheet = async (luxonDateTime, floatValue) => {
+	return fetchFromSheet('add', { date: luxonDateTime.toISO(), floatValue: floatValue.toString() });
 };
 
-const removeEventFromSheet = async (dateToRemove) => {
-	return fetchFromSheet('remove', { date: dateToRemove.toISOString() });
+// Expects a Luxon DateTime object
+const removeEventFromSheet = async (luxonDateTimeToRemove) => {
+	return fetchFromSheet('remove', { date: luxonDateTimeToRemove.toISO() });
 };
 
 // --- UI Update Functions ---
 function updateTimeDisplay() {
 	const timeCheckNowDiv = $('timeCheckNow');
-	const timeZoneDiv = $('timeZone');
-	timeZoneDiv.innerText = `Time Zone: ${time_zone}`;
-	const localCode = $('localCode');
-	localCode.innerText = `Local Code: ${LOCALE}`;
+	const timeZoneDiv = $('timeZoneDisplay');
+	const localCodeDiv = $('localCode');
 
-	const now = getLocalNow();
-	const formattedTime = now.toLocaleString(LOCALE, {
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		timeZone: time_zone,
-	});
-	timeCheckNowDiv.innerText = `Current DateTime: ${formattedTime}`;
+	if (timeZoneDiv) timeZoneDiv.innerText = `Time Zone: ${timeZone}`;
+	if (localCodeDiv) localCodeDiv.innerText = `Locale: ${LOCALE}`;
+
+	const now = getLocalNow(); // Luxon DateTime in target zone
+	if (timeCheckNowDiv) timeCheckNowDiv.innerText = `Current DateTime: ${formatDateTime(now)}`;
 }
-setInterval(updateTimeDisplay, 60000); // Update every minute
-updateTimeDisplay(); // Initial call to set time immediately
 
 function setOverlayVisibility(show) {
-	overlay.style.display = show ? 'block' : 'none';
+	if (overlay) overlay.style.display = show ? 'block' : 'none';
 }
 
 function updateRateDisplay() {
@@ -177,133 +224,203 @@ function updateRateDisplay() {
 	if (!isNaN(pills) && !isNaN(hours) && hours !== 0) {
 		currentRate = pills / hours;
 		saveToLocalStorage(RATE_KEY, currentRate.toString());
-		rateElement.innerText = currentRate.toFixed(3);
+		if (rateElement) rateElement.innerText = currentRate.toFixed(1);
 	} else {
 		currentRate = 0;
-		saveToLocalStorage(RATE_KEY, '0'); // Save '0' if invalid
-		rateElement.innerText = 'N/A'; // Indicate invalid input
+		saveToLocalStorage(RATE_KEY, '0');
+		if (rateElement) rateElement.innerText = 'N/A';
 	}
-	// After rate changes, statistics and graph should ideally update
-	if (eventsData.length > 0) {
+
+	if (eventsData.length > 0 || currentRate > 0) {
 		updateStatisticsDisplay(eventsData);
 		plotDosageGraph(eventsData);
 	}
 }
 
 function updateStatisticsDisplay(events) {
-	if (!events || events.length === 0) {
-		['needed', 'totalGiven', 'totalNeeded', 'half', 'half_time', 'one', 'one_time'].forEach(
-			(id) => ($(id).innerText = 'N/A')
-		);
+	const statsElementsIds = [
+		'needed',
+		'totalGiven',
+		'totalNeeded',
+		'half',
+		'half_time',
+		'one',
+		'one_time',
+	];
+	if (!events || (events.length === 0 && currentRate === 0)) {
+		statsElementsIds.forEach((id) => {
+			const elem = $(id);
+			if (elem) elem.innerText = 'N/A';
+		});
 		return;
 	}
 
-	const totalGiven = events.reduce((sum, e) => sum + parseFloat(e.dosageAmount || 0), 0);
-	const startDate = new Date(events[0].dosageTime);
-	const now = getLocalNow();
-	const hoursElapsed = calculateHoursBetween(startDate, now);
-	const totalNeeded = currentRate * hoursElapsed;
-	const currentNeeded = Math.max(0, totalNeeded - totalGiven); // Needed cannot be negative
+	const totalGiven = events.reduce((sum, e) => sum + (parseFloat(e.dosageAmount) || 0), 0);
 
-	const setStat = (id, val) => {
+	// Use Luxon DateTime objects for calculations
+	const firstEventDT = events.length > 0 ? luxon.DateTime.fromISO(events[0].dosageTime) : null;
+	const nowDT = getLocalNow();
+
+	let hoursElapsed = 0;
+	if (firstEventDT && firstEventDT.isValid) {
+		hoursElapsed = calculateHoursBetween(firstEventDT, nowDT);
+	} else if (events.length > 0) {
+		//Edge case: first event time was invalid
+		console.warn('First event time was invalid for stats calculation.');
+	}
+
+	const totalNeededIdeal = currentRate * hoursElapsed;
+	const currentNeeded = Math.max(0, totalNeededIdeal - totalGiven);
+
+	const setStat = (id, value) => {
 		const element = $(id);
-		if (element) {
-			element.innerText = val;
-		} else {
-			console.warn(`Statistic element with ID '${id}' not found.`);
-		}
+		if (element) element.innerText = value;
+		else console.warn(`Statistic element with ID '${id}' not found.`);
 	};
 
-	setStat('needed', currentNeeded.toFixed(3));
-	setStat('totalGiven', totalGiven.toFixed(3));
-	setStat('totalNeeded', totalNeeded.toFixed(3));
+	setStat('needed', currentNeeded.toFixed(1));
+	setStat('totalGiven', totalGiven.toFixed(1));
+	setStat('totalNeeded', totalNeededIdeal.toFixed(1));
 
 	if (currentRate > 0) {
-		const halfDosageTimeOffset = (0.5 - currentNeeded) / currentRate;
-		const oneDosageTimeOffset = (1 - currentNeeded) / currentRate;
+		const halfDosageTimeOffsetHours = (0.5 - currentNeeded) / currentRate;
+		const oneDosageTimeOffsetHours = (1.0 - currentNeeded) / currentRate;
 
-		setStat('half', halfDosageTimeOffset.toFixed(1));
-		setStat('half_time', formatTimeOffset(halfDosageTimeOffset));
-		setStat('one', oneDosageTimeOffset.toFixed(1));
-		setStat('one_time', formatTimeOffset(oneDosageTimeOffset));
+		setStat('half', `${halfDosageTimeOffsetHours.toFixed(1)} hrs`);
+		setStat('half_time', formatTimeOffset(halfDosageTimeOffsetHours));
+		setStat('one', `${oneDosageTimeOffsetHours.toFixed(1)} hrs`);
+		setStat('one_time', formatTimeOffset(oneDosageTimeOffsetHours));
 	} else {
-		setStat('half', 'N/A');
-		setStat('half_time', 'N/A');
-		setStat('one', 'N/A');
-		setStat('one_time', 'N/A');
+		['half', 'half_time', 'one', 'one_time'].forEach((id) => setStat(id, 'N/A'));
 	}
 }
 
-function populateEventRow(dosageAmount, dosageTime) {
+function populateEventRow(dosageAmount, dosageTimeISO) {
+	if (!addEventsContainer) return;
 	let table = addEventsContainer.querySelector('table');
 	if (!table) {
 		table = document.createElement('table');
 		table.innerHTML = `
-            <thead><tr><th>Dosage Amount</th><th>Dosage Time</th><th>Action</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Dosage Amount</th>
+                    <th>Dosage Time</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
             <tbody></tbody>`;
 		addEventsContainer.appendChild(table);
 	}
+	const tbody = table.querySelector('tbody');
+	if (!tbody) return;
 
-	const row = table.querySelector('tbody').insertRow();
-	row.insertCell().textContent = dosageAmount;
+	const row = tbody.insertRow();
+	row.insertCell().textContent = dosageAmount.toFixed(1);
 
 	const timeCell = row.insertCell();
-	timeCell.textContent = formatDateTime(dosageTime);
-	timeCell.dataset.rawTime = new Date(dosageTime).toISOString();
+	timeCell.textContent = formatDateTime(dosageTimeISO);
+	timeCell.dataset.rawTime = dosageTimeISO;
 
 	const actionCell = row.insertCell();
 	const removeButton = document.createElement('input');
 	removeButton.type = 'button';
 	removeButton.value = 'X';
+	removeButton.className = 'remove-button';
 	removeButton.onclick = () => removeDosageEntryHandler(removeButton);
 	actionCell.appendChild(removeButton);
 }
 
+let dosageChartInstance = null;
+
 function plotDosageGraph(events) {
-	dosageChartContainer.innerHTML = ''; // Clear previous chart
-	if (!events || events.length === 0 || typeof Chart === 'undefined') {
-		dosageChartContainer.textContent = 'No data to display or Chart.js not loaded.';
+	if (!dosageChartContainer) return;
+	dosageChartContainer.innerHTML = '';
+
+	if (typeof Chart === 'undefined') {
+		dosageChartContainer.textContent = 'Chart.js library not loaded.';
+		return;
+	}
+	if (typeof luxon === 'undefined') {
+		dosageChartContainer.textContent = 'Luxon library not loaded.';
+		return;
+	}
+
+	if (!events || events.length === 0 || currentRate <= 0) {
+		dosageChartContainer.textContent =
+			'No data to display or rate is zero. Enter data and set a rate.';
+		if (dosageChartInstance) {
+			dosageChartInstance.destroy();
+			dosageChartInstance = null;
+		}
 		return;
 	}
 
 	const canvas = document.createElement('canvas');
 	dosageChartContainer.appendChild(canvas);
 
-	const { labels, recommendedIntake } = calculatePlotData(events);
+	const { labels: luxonDateTimeLabels, neededDataPoints } = calculatePlotData(events);
 
-	new Chart(canvas.getContext('2d'), {
+	if (luxonDateTimeLabels.length === 0 && neededDataPoints.length === 0) {
+		dosageChartContainer.textContent = 'Not enough data to plot the graph after processing.';
+		if (dosageChartInstance) {
+			dosageChartInstance.destroy();
+			dosageChartInstance = null;
+		}
+		return;
+	}
+
+	if (dosageChartInstance) {
+		dosageChartInstance.destroy();
+	}
+
+	dosageChartInstance = new Chart(canvas.getContext('2d'), {
+		type: 'line',
 		data: {
-			labels: labels,
+			labels: luxonDateTimeLabels,
 			datasets: [
 				{
-					type: 'line',
-					label: 'Needed Dosage Over Time',
-					data: recommendedIntake,
-					borderColor: 'rgba(75, 192, 192, 1)',
-					backgroundColor: 'rgba(75, 192, 192, 0.2)', // Added fill color
-					// tension: 0.1, // Smoother line
+					label: 'Needed Dosage (Deficit)',
+					data: neededDataPoints,
+					borderColor: 'rgb(99, 211, 255)',
+					backgroundColor: 'rgba(84, 83, 83, 0.2)',
 					fill: true,
 				},
 			],
 		},
 		options: {
 			responsive: true,
+			// maintainAspectRatio: false,
 			scales: {
 				x: {
 					type: 'time',
-					time: {
-						tooltipFormat: 'MMM dd, yyyy HH:mm', // Improved tooltip format
-						unit: 'hour', // Adjust unit based on data span
+					adapters: {
+						date: {
+							zone: timeZone,
+							locale: LOCALE,
+						},
 					},
-					title: { display: true, text: 'Time' },
+					time: {
+						tooltipFormat: 'MMM d, yyyy, hh:mm a ZZZZ',
+						displayFormats: {
+							millisecond: 'HH:mm:ss.SSS',
+							second: 'HH:mm:ss',
+							minute: 'HH:mm',
+							hour: 'h a',
+							day: 'MMM d',
+							week: 'MMM d, yyyy',
+							month: 'MMM yyyy',
+							quarter: 'QQQ yyyy',
+							year: 'yyyy',
+						},
+					},
+					title: { display: true, text: `Time (${timeZone})` },
 				},
 				y: {
-					beginAtZero: true,
-					title: { display: true, text: 'Dosage Amount' },
+					beginAtZero: false,
+					title: { display: true, text: 'Dosage Units Needed' },
 				},
 			},
 			plugins: {
-				// Added for Chart.js v3+
 				tooltip: {
 					mode: 'index',
 					intersect: false,
@@ -317,226 +434,308 @@ function plotDosageGraph(events) {
 }
 
 function calculatePlotData(events) {
-	// Handles empty events or invalid rate
 	if (!events || events.length === 0 || currentRate <= 0) {
-		return { labels: [], recommendedIntake: [] };
+		return { labels: [], neededDataPoints: [] };
 	}
+
+	const sortedEvents = [...events].sort(
+		(a, b) =>
+			luxon.DateTime.fromISO(a.dosageTime).toMillis() -
+			luxon.DateTime.fromISO(b.dosageTime).toMillis()
+	);
 
 	const labels = [];
-	const recommendedIntakeValues = []; // Using a different variable name internally for clarity
-	let cumulativeDosage = 0;
+	const neededDataPoints = [];
+	let cumulativeDosageTaken = 0;
+	const firstEventTimeDT = luxon.DateTime.fromISO(sortedEvents[0].dosageTime).setZone(timeZone);
 
-	// Ensure events are sorted by time for correct processing
-	const sortedEvents = [...events].sort((a, b) => new Date(a.dosageTime) - new Date(b.dosageTime));
+	if (!firstEventTimeDT.isValid) {
+		console.error('First event time is invalid in calculatePlotData:', sortedEvents[0].dosageTime);
+		return { labels: [], neededDataPoints: [] };
+	}
 
-	const firstEventTime = new Date(sortedEvents[0].dosageTime);
+	labels.push(firstEventTimeDT);
+	neededDataPoints.push(0);
 
-	sortedEvents.forEach((event) => {
-		const eventTime = new Date(event.dosageTime);
+	sortedEvents.forEach((event, _) => {
+		const eventTimeDT = luxon.DateTime.fromISO(event.dosageTime).setZone(timeZone);
+		if (!eventTimeDT.isValid) {
+			console.warn('Skipping invalid event time in calculatePlotData:', event.dosageTime);
+			return;
+		}
 		const dosageAmount = parseFloat(event.dosageAmount);
 
-		// Calculate hours from the very first event to the current event
-		const hoursFromStart = calculateHoursBetween(firstEventTime, eventTime);
-		// Ideal total dosage that should have been taken by this event's time
+		const hoursFromStart = calculateHoursBetween(firstEventTimeDT, eventTimeDT);
 		const idealTotalIntakeByEventTime = currentRate * hoursFromStart;
 
-		// Point 1: Value just BEFORE taking the current dose
-		// Represents (Ideal total intake by now) - (Actual total taken *before* this dose)
-		labels.push(eventTime);
-		recommendedIntakeValues.push(idealTotalIntakeByEventTime - cumulativeDosage);
+		// Point before dose
+		const timeBeforeDoseDT = eventTimeDT.minus({ milliseconds: 1 });
+		// Ensure labels are chronological and distinct if needed for stepped appearance
+		if (labels.length > 0 && timeBeforeDoseDT > labels[labels.length - 1]) {
+			labels.push(timeBeforeDoseDT);
+			neededDataPoints.push(idealTotalIntakeByEventTime - cumulativeDosageTaken);
+		}
 
-		// Add current dose to cumulative dosage
-		cumulativeDosage += dosageAmount;
+		// Point at dose time, reflecting state before this dose
+		if (labels.length === 0 || eventTimeDT > labels[labels.length - 1]) {
+			labels.push(eventTimeDT);
+			neededDataPoints.push(idealTotalIntakeByEventTime - cumulativeDosageTaken);
+		} else if (labels.length > 0 && eventTimeDT.equals(labels[labels.length - 1])) {
+			// If same time, update last point (state before dose)
+			neededDataPoints[neededDataPoints.length - 1] =
+				idealTotalIntakeByEventTime - cumulativeDosageTaken;
+		}
 
-		// Point 2: Value just AFTER taking the current dose
-		// Represents (Ideal total intake by now) - (Actual total taken *after* this dose)
-		labels.push(eventTime); // Same time as Point 1
-		recommendedIntakeValues.push(idealTotalIntakeByEventTime - cumulativeDosage);
+		cumulativeDosageTaken += dosageAmount;
+
+		// Point at dose time, reflecting state after this dose
+		labels.push(eventTimeDT); // Same time for vertical step
+		neededDataPoints.push(idealTotalIntakeByEventTime - cumulativeDosageTaken);
 	});
 
-	// Project to current time (or slightly beyond if last dose was very recent)
-	const now = getLocalNow();
-	const lastRecordedEventTime =
-		sortedEvents.length > 0
-			? new Date(sortedEvents[sortedEvents.length - 1].dosageTime)
-			: firstEventTime;
+	const nowDT = getLocalNow();
 
-	// Determine a point for the end of the graph line
-	// If 'now' is significantly after the last event, use 'now'.
-	// If 'now' is very close to or before the last event time (e.g., due to clock sync issues or future-dated entries),
-	// project a bit into the future from the last event to ensure the line extends.
-	let projectionTime = now;
-	if (now.getTime() < lastRecordedEventTime.getTime() + 3600000) {
-		// If 'now' is less than 1 hour past last event
-		projectionTime = new Date(lastRecordedEventTime.getTime() + 2 * 3600000); // Project 2 hours past last dose
-	}
-	// However, if user strictly wants it to end at 'now', this can be simplified to: const projectionTime = now;
-
-	const hoursFromStartToProjection = calculateHoursBetween(firstEventTime, projectionTime);
+	const hoursFromStartToProjection = calculateHoursBetween(firstEventTimeDT, nowDT);
 	const idealTotalIntakeByProjection = currentRate * hoursFromStartToProjection;
 
-	labels.push(projectionTime);
-	recommendedIntakeValues.push(idealTotalIntakeByProjection - cumulativeDosage);
+	labels.push(nowDT);
+	neededDataPoints.push(idealTotalIntakeByProjection - cumulativeDosageTaken);
 
-	return { labels: labels, recommendedIntake: recommendedIntakeValues };
+	// Deduplicate adjacent time points if values are the same, simplify graph data
+	const finalLabels = [];
+	const finalNeededData = [];
+	if (labels.length > 0) {
+		finalLabels.push(labels[0]);
+		finalNeededData.push(neededDataPoints[0]);
+		for (let i = 1; i < labels.length; i++) {
+			// Keep point if time is different OR if value is different at same time (for steps)
+			if (!labels[i].equals(labels[i - 1]) || neededDataPoints[i] !== neededDataPoints[i - 1]) {
+				// Also, if time is same as previous, but also same as one before previous, and values form a spike (up then down)
+				// then the middle point might be redundant if it's a "return to previous". This logic can get complex.
+				// For now, simple deduplication:
+				if (labels[i].equals(labels[i - 1]) && neededDataPoints[i] === neededDataPoints[i - 1]) {
+					continue;
+				}
+				finalLabels.push(labels[i]);
+				finalNeededData.push(neededDataPoints[i]);
+			}
+		}
+	}
+
+	return { labels: finalLabels, neededDataPoints: finalNeededData };
 }
 
 // --- Event Handlers ---
-function handleInputChange(key) {
-	const value = $(key).value;
-	saveToLocalStorage(key, value);
-	if (key === PILLS_KEY || key === HOUR_KEY) {
-		updateRateDisplay();
+function handleInputChange(storageKey) {
+	const element = $(storageKey);
+	if (element) {
+		saveToLocalStorage(storageKey, element.value);
+		if (storageKey === PILLS_KEY || storageKey === HOUR_KEY) {
+			updateRateDisplay();
+		}
 	}
 }
 
 async function addNewEventHandler(quickAmount) {
-	setOverlayVisibility(true); // Show overlay at the start
-	let amount, time;
+	let amount;
+	let eventTimeDT; // Luxon DateTime
 
 	if (quickAmount && !isNaN(parseFloat(quickAmount))) {
 		amount = parseFloat(quickAmount);
-		time = getLocalNow();
+		eventTimeDT = getLocalNow(); // Already in target zone
 	} else {
-		amount = parseFloat(dosageAmountInput.value);
-		const timeValue = newEventDatetimeInput.value;
-		if (!timeValue) {
-			alert('Please select a valid date and time.');
-			setOverlayVisibility(false);
+		if (!dosageAmountInput || !newEventDatetimeInput) {
+			alert('Input fields not found.');
 			return;
 		}
-		time = new Date(timeValue); // Uses local time from input
+		amount = parseFloat(dosageAmountInput.value);
+		const timeValue = newEventDatetimeInput.value; // "YYYY-MM-DDTHH:MM"
+
+		if (!timeValue) {
+			alert('Please select a valid date and time for the new event.');
+			return;
+		}
+		// Interpret the datetime-local string as being in the application's configured timeZone
+		eventTimeDT = luxon.DateTime.fromISO(timeValue, { zone: timeZone });
 	}
 
 	if (isNaN(amount) || amount <= 0) {
 		alert('Please enter a valid positive dosage amount.');
-		setOverlayVisibility(false);
 		return;
 	}
-	if (isNaN(time.getTime())) {
-		alert('Invalid date/time selected.');
-		setOverlayVisibility(false);
+	if (!eventTimeDT || !eventTimeDT.isValid) {
+		alert(
+			`Invalid date/time selected: ${
+				eventTimeDT ? eventTimeDT.invalidReason : 'Could not parse'
+			}. Please use YYYY-MM-DDTHH:MM format.`
+		);
 		return;
 	}
 
-	const result = await addEventToSheet(time, amount);
-	if (result.success) {
-		const newEvent = { dosageAmount: amount, dosageTime: time.toISOString() };
-		eventsData.push(newEvent);
-		eventsData.sort((a, b) => new Date(a.dosageTime) - new Date(b.dosageTime)); // Keep sorted
+	setOverlayVisibility(true);
+	try {
+		// addEventToSheet expects a Luxon DateTime
+		const result = await addEventToSheet(eventTimeDT, amount);
+		if (result.success) {
+			const newEvent = { dosageAmount: amount, dosageTime: eventTimeDT.toISO() }; // Store as ISO
+			eventsData.push(newEvent);
+			eventsData.sort(
+				(a, b) =>
+					luxon.DateTime.fromISO(a.dosageTime).toMillis() -
+					luxon.DateTime.fromISO(b.dosageTime).toMillis()
+			);
 
-		populateEventRow(amount, time);
-		updateStatisticsDisplay(eventsData);
-		plotDosageGraph(eventsData);
-		// Clear input fields after successful submission only if not a quick add
-		if (!quickAmount) {
-			dosageAmountInput.value = '';
-			// newEventDatetimeInput.value = ''; // Optionally clear time
+			populateEventRow(amount, eventTimeDT.toISO());
+			updateStatisticsDisplay(eventsData);
+			plotDosageGraph(eventsData);
+
+			if (!quickAmount && dosageAmountInput) {
+				dosageAmountInput.value = '';
+			}
+		} else {
+			alert(`Failed to add event: ${result.error || 'Unknown error from sheet API'}`);
 		}
-	} else {
-		alert('Failed to add event to the sheet. Please try again.');
+	} catch (error) {
+		console.error('Error in addNewEventHandler:', error);
+		alert('An unexpected error occurred while adding the event.');
+	} finally {
+		setOverlayVisibility(false);
 	}
-	// Overlay is hidden by fetchFromSheet finally block
 }
 
 async function removeDosageEntryHandler(buttonElement) {
 	if (!confirm('Are you sure you want to remove this entry?')) return;
 
-	setOverlayVisibility(true);
 	const row = buttonElement.closest('tr');
-	const timeCell = row.cells[1]; // Assuming time is in the second cell
-	const rawTime = timeCell?.dataset.rawTime;
+	if (!row) {
+		alert('Could not find table row.');
+		return;
+	}
+	const timeCell = row.cells[1];
+	const rawTimeISO = timeCell?.dataset.rawTime;
 
-	if (!rawTime) {
-		console.error('Could not find raw time data for removal.');
-		alert('Error: Could not identify the entry to remove.');
-		setOverlayVisibility(false);
+	if (!rawTimeISO) {
+		alert('Error: Could not identify the entry to remove (missing time data).');
 		return;
 	}
 
-	const dosageTimeToRemove = new Date(rawTime);
-	const result = await removeEventFromSheet(dosageTimeToRemove);
-
-	if (result.success) {
-		row.remove();
-		// Update local eventsData
-		eventsData = eventsData.filter(
-			(event) => new Date(event.dosageTime).getTime() !== dosageTimeToRemove.getTime()
-		);
-		updateStatisticsDisplay(eventsData);
-		plotDosageGraph(eventsData);
-		if (addEventsContainer.querySelector('tbody')?.children.length === 0) {
-			const table = addEventsContainer.querySelector('table');
-			if (table) table.remove(); // Remove table if no rows left
-		}
-	} else {
-		alert('Failed to remove event from the sheet. Please try again.');
+	const dosageTimeToRemoveDT = luxon.DateTime.fromISO(rawTimeISO);
+	if (!dosageTimeToRemoveDT.isValid) {
+		alert('Error: Stored time for removal is invalid.');
+		return;
 	}
-	// Overlay is hidden by fetchFromSheet finally block
+
+	setOverlayVisibility(true);
+	try {
+		const result = await removeEventFromSheet(dosageTimeToRemoveDT);
+		if (result.success && result.removed) {
+			console.log('Event removed successfully:', result);
+			row.remove();
+			eventsData = eventsData.filter(
+				(event) =>
+					luxon.DateTime.fromISO(event.dosageTime).toMillis() !== dosageTimeToRemoveDT.toMillis()
+			);
+			updateStatisticsDisplay(eventsData);
+			plotDosageGraph(eventsData);
+
+			if (addEventsContainer?.querySelector('tbody')?.children.length === 0) {
+				const table = addEventsContainer.querySelector('table');
+				if (table) table.remove();
+			}
+		} else {
+			console.error(
+				'Failed to remove event:',
+				result,
+				'dosageTimeToRemoveDT',
+				dosageTimeToRemoveDT
+			);
+			alert(`Failed to remove event: ${result.error || 'Unknown error from sheet API'}`);
+		}
+	} catch (error) {
+		console.error('Error in removeDosageEntryHandler:', error);
+		alert('An unexpected error occurred while removing the event.');
+	} finally {
+		setOverlayVisibility(false);
+	}
 }
 
 function initInputField(element, storageKey, defaultValue) {
+	if (!element) return;
 	const savedValue = loadFromLocalStorage(storageKey);
 	element.value = savedValue ?? defaultValue.toString();
 	if (savedValue === null) {
-		// Only save if it wasn't already there
 		saveToLocalStorage(storageKey, defaultValue.toString());
 	}
 }
 
 // --- Initialization ---
 async function initializeApp() {
-	setOverlayVisibility(true); // Show overlay during initial load
+	setOverlayVisibility(true);
 
 	initInputField(pillsElement, PILLS_KEY, DEFAULT_PILLS);
 	initInputField(hourElement, HOUR_KEY, DEFAULT_HOUR);
-	updateRateDisplay(); // Initialize rate display
+	updateRateDisplay();
 
-	// Set up event listeners
+	updateTimeDisplay();
+	setInterval(updateTimeDisplay, 60000);
+
 	[PILLS_KEY, HOUR_KEY].forEach((id) => {
 		const element = $(id);
-		if (element) {
-			element.addEventListener('input', () => handleInputChange(id));
-		}
+		if (element) element.addEventListener('input', () => handleInputChange(id));
 	});
 
-	// Expose functions to global scope if they are called from HTML (e.g., onclick)
-	window.addNewEvent = addNewEventHandler; // If called like <button onclick="addNewEvent()">
-	window.removeDosageEntry = removeDosageEntryHandler; // If called directly from old onclick
-	window.setTime = (id) => {
-		// Keep as is if simple
-		const now = getLocalNow();
-		const element = $(id);
-		if (element) element.value = now.toISOString().slice(0, 16);
+	window.addNewEvent = addNewEventHandler;
+	window.setTimeOnField = (elementId) => {
+		const element = $(elementId);
+		if (element && element instanceof HTMLInputElement) {
+			const nowDT = getLocalNow(); // Luxon DateTime in target zone
+			// Format for datetime-local input: "yyyy-MM-dd'T'HH:mm"
+			element.value = nowDT.toFormat("yyyy-MM-dd'T'HH:mm");
+		} else {
+			console.warn(`Element with ID '${elementId}' not found or not an input.`);
+		}
 	};
-	window.triggerRefresh = () => location.reload();
+	window.triggerRefresh = () => location.reload(true);
 
-	const sheetData = await getEventsFromSheet();
-	if (sheetData.length > 0) {
-		eventsData = sheetData
-			.map((e) => ({
-				dosageAmount: parseFloat(e.value), // Ensure it's a number
-				dosageTime: new Date(e.date).toISOString(), // Standardize date format
-			}))
-			.sort((a, b) => new Date(a.dosageTime) - new Date(b.dosageTime)); // Sort by date
+	try {
+		const sheetEvents = await getEventsFromSheet();
+		if (sheetEvents.length > 0) {
+			eventsData = sheetEvents
+				.filter(
+					(e) =>
+						e &&
+						typeof e.date !== 'undefined' &&
+						typeof e.value !== 'undefined' &&
+						luxon.DateTime.fromISO(e.date).isValid
+				)
+				.map((e) => ({
+					dosageAmount: parseFloat(e.value),
+					dosageTime: luxon.DateTime.fromISO(e.date).toISO(), // Standardize to Luxon-generated ISO
+				}))
+				.sort(
+					(a, b) =>
+						luxon.DateTime.fromISO(a.dosageTime).toMillis() -
+						luxon.DateTime.fromISO(b.dosageTime).toMillis()
+				);
 
-		eventsData.forEach((event) => {
-			populateEventRow(event.dosageAmount, event.dosageTime);
-		});
+			if (addEventsContainer) addEventsContainer.innerHTML = '';
+			eventsData.forEach((event) => {
+				populateEventRow(event.dosageAmount, event.dosageTime);
+			});
+		}
+	} catch (error) {
+		console.error('Error fetching initial data:', error);
+		alert('Could not load initial data. Check console for details.');
 	}
 
 	updateStatisticsDisplay(eventsData);
 	plotDosageGraph(eventsData);
-	// Overlay is hidden by fetchFromSheet finally block if getEventsFromSheet is the last async call
-	// or explicitly hide if there are synchronous operations after the last await.
-	setOverlayVisibility(false); // Ensure it's hidden after all setup
+	setOverlayVisibility(false);
 }
 
-// --- Global Event Listeners (if any, besides direct HTML ones) ---
-// e.g., document.addEventListener('DOMContentLoaded', initializeApp);
-// For simplicity, assuming initializeApp is called when the script runs and DOM is ready.
+// --- App Start ---
 if (document.readyState === 'loading') {
 	document.addEventListener('DOMContentLoaded', initializeApp);
 } else {
-	initializeApp(); // DOM is already loaded
+	initializeApp();
 }
