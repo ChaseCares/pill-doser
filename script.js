@@ -221,7 +221,7 @@ function updateRateDisplay() {
 	if (!isNaN(pills) && !isNaN(hours) && hours !== 0) {
 		currentRate = pills / hours;
 		saveToLocalStorage(RATE_KEY, currentRate.toString());
-		if (rateElement) rateElement.innerText = currentRate.toFixed(1);
+		if (rateElement) rateElement.innerText = currentRate.toFixed(3);
 	} else {
 		currentRate = 0;
 		saveToLocalStorage(RATE_KEY, '0');
@@ -429,95 +429,90 @@ function plotDosageGraph(events) {
 }
 
 function calculatePlotData(events) {
-	if (!events || events.length === 0 || currentRate <= 0) {
+	const sortedEvents = [...events]
+		.map((event) => {
+			const eventTimeDT = luxon.DateTime.fromISO(event.dosageTime).setZone(timeZone);
+			const dosageAmount = parseFloat(event.dosageAmount);
+			if (!eventTimeDT.isValid || isNaN(dosageAmount) || dosageAmount < 0) {
+				console.warn('Skipping invalid event in calculatePlotData:', event);
+				return null;
+			}
+			return { ...event, eventTimeDT, dosageAmount };
+		})
+		.filter((event) => event !== null)
+		.sort((a, b) => a.eventTimeDT.toMillis() - b.eventTimeDT.toMillis());
+
+	if (sortedEvents.length === 0) {
+		console.warn('No valid events remaining after filtering in calculatePlotData.');
 		return { labels: [], neededDataPoints: [] };
 	}
-
-	const sortedEvents = [...events].sort(
-		(a, b) =>
-			luxon.DateTime.fromISO(a.dosageTime).toMillis() -
-			luxon.DateTime.fromISO(b.dosageTime).toMillis()
-	);
 
 	const labels = [];
 	const neededDataPoints = [];
 	let cumulativeDosageTaken = 0;
-	const firstEventTimeDT = luxon.DateTime.fromISO(sortedEvents[0].dosageTime).setZone(timeZone);
+	const firstEventTimeDT = sortedEvents[0].eventTimeDT;
 
-	if (!firstEventTimeDT.isValid) {
-		console.error('First event time is invalid in calculatePlotData:', sortedEvents[0].dosageTime);
-		return { labels: [], neededDataPoints: [] };
-	}
+	// This point represents the "need" leading up to the first dose.
+	// It projects backwards from the first dose time based on how long that dose *should* last.
+	const initialDeficitHours = sortedEvents[0].dosageAmount / currentRate;
+	const projectedStartTimeDT = firstEventTimeDT.minus({ hours: initialDeficitHours });
 
-	labels.push(firstEventTimeDT);
-	neededDataPoints.push(0);
+	labels.push(projectedStartTimeDT);
+	neededDataPoints.push(0); // At the projected start, the "needed" amount is zero relative to this projection.
+
+	// Point just before the first dose, reflecting the accumulated need up to that dose.
+	const timeBeforeFirstDoseDT = firstEventTimeDT.minus({ milliseconds: 1 });
+	const hoursToFirstDoseFromProjectedStart = calculateHoursBetween(
+		projectedStartTimeDT,
+		firstEventTimeDT
+	);
+	const idealIntakeBeforeFirstDose = currentRate * hoursToFirstDoseFromProjectedStart;
+
+	labels.push(timeBeforeFirstDoseDT);
+	neededDataPoints.push(idealIntakeBeforeFirstDose); // No dosage taken yet, so needed is the ideal.
 
 	sortedEvents.forEach((event, _) => {
-		const eventTimeDT = luxon.DateTime.fromISO(event.dosageTime).setZone(timeZone);
-		if (!eventTimeDT.isValid) {
-			console.warn('Skipping invalid event time in calculatePlotData:', event.dosageTime);
-			return;
-		}
-		const dosageAmount = parseFloat(event.dosageAmount);
+		const { eventTimeDT, dosageAmount } = event;
 
-		const hoursFromStart = calculateHoursBetween(firstEventTimeDT, eventTimeDT);
-		const idealTotalIntakeByEventTime = currentRate * hoursFromStart;
+		// Calculate ideal total intake from the *projected start time* to the current event time.
+		const hoursFromProjectedStart = calculateHoursBetween(projectedStartTimeDT, eventTimeDT);
+		const idealTotalIntakeByEventTime = currentRate * hoursFromProjectedStart;
 
-		// Point before dose
-		const timeBeforeDoseDT = eventTimeDT.minus({ milliseconds: 1 });
-		// Ensure labels are chronological and distinct if needed for stepped appearance
-		if (labels.length > 0 && timeBeforeDoseDT > labels[labels.length - 1]) {
-			labels.push(timeBeforeDoseDT);
-			neededDataPoints.push(idealTotalIntakeByEventTime - cumulativeDosageTaken);
-		}
-
-		// Point at dose time, reflecting state before this dose
-		if (labels.length === 0 || eventTimeDT > labels[labels.length - 1]) {
-			labels.push(eventTimeDT);
+		// Point just before this dose (if not the first event, or if there's a time gap)
+		// This represents the state *before* the current dose is administered.
+		if (labels.length > 0 && !eventTimeDT.equals(labels[labels.length - 1])) {
+			labels.push(eventTimeDT.minus({ milliseconds: 1 }));
 			neededDataPoints.push(idealTotalIntakeByEventTime - cumulativeDosageTaken);
 		} else if (labels.length > 0 && eventTimeDT.equals(labels[labels.length - 1])) {
-			// If same time, update last point (state before dose)
 			neededDataPoints[neededDataPoints.length - 1] =
 				idealTotalIntakeByEventTime - cumulativeDosageTaken;
 		}
 
 		cumulativeDosageTaken += dosageAmount;
 
-		// Point at dose time, reflecting state after this dose
-		labels.push(eventTimeDT); // Same time for vertical step
+		labels.push(eventTimeDT);
 		neededDataPoints.push(idealTotalIntakeByEventTime - cumulativeDosageTaken);
 	});
 
-	const nowDT = getLocalNow();
-
-	const hoursFromStartToProjection = calculateHoursBetween(firstEventTimeDT, nowDT);
-	const idealTotalIntakeByProjection = currentRate * hoursFromStartToProjection;
-
-	labels.push(nowDT);
-	neededDataPoints.push(idealTotalIntakeByProjection - cumulativeDosageTaken);
-
-	// Deduplicate adjacent time points if values are the same, simplify graph data
-	const finalLabels = [];
-	const finalNeededData = [];
-	if (labels.length > 0) {
-		finalLabels.push(labels[0]);
-		finalNeededData.push(neededDataPoints[0]);
-		for (let i = 1; i < labels.length; i++) {
-			// Keep point if time is different OR if value is different at same time (for steps)
-			if (!labels[i].equals(labels[i - 1]) || neededDataPoints[i] !== neededDataPoints[i - 1]) {
-				// Also, if time is same as previous, but also same as one before previous, and values form a spike (up then down)
-				// then the middle point might be redundant if it's a "return to previous". This logic can get complex.
-				// For now, simple deduplication:
-				if (labels[i].equals(labels[i - 1]) && neededDataPoints[i] === neededDataPoints[i - 1]) {
-					continue;
-				}
-				finalLabels.push(labels[i]);
-				finalNeededData.push(neededDataPoints[i]);
-			}
-		}
+	const nowDT = getLocalNow().setZone(timeZone);
+	if (!nowDT.isValid) {
+		console.error('Current time (nowDT) is invalid in calculatePlotData.');
+		return { labels: labels, neededDataPoints: neededDataPoints };
 	}
 
-	return { labels: finalLabels, neededDataPoints: finalNeededData };
+	if (labels.length === 0 || nowDT > labels[labels.length - 1]) {
+		const hoursFromProjectedStartToNow = calculateHoursBetween(projectedStartTimeDT, nowDT);
+		const idealTotalIntakeByNow = currentRate * hoursFromProjectedStartToNow;
+
+		labels.push(nowDT);
+		neededDataPoints.push(idealTotalIntakeByNow - cumulativeDosageTaken);
+	} else if (labels.length > 0 && nowDT.equals(labels[labels.length - 1])) {
+		const hoursFromProjectedStartToNow = calculateHoursBetween(projectedStartTimeDT, nowDT);
+		const idealTotalIntakeByNow = currentRate * hoursFromProjectedStartToNow;
+		neededDataPoints[neededDataPoints.length - 1] = idealTotalIntakeByNow - cumulativeDosageTaken;
+	}
+
+	return { labels: labels, neededDataPoints: neededDataPoints };
 }
 
 // --- Event Handlers ---
