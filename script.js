@@ -255,11 +255,22 @@ function updateStatisticsDisplay(events) {
 	const totalGiven = events.reduce((sum, e) => sum + (parseFloat(e.dosageAmount) || 0), 0);
 
 	const firstEventDT = events.length > 0 ? luxon.DateTime.fromISO(events[0].dosageTime) : null;
+	if (!firstEventDT || !firstEventDT.isValid) {
+		console.warn('First event time is invalid for stats calculation.');
+		return;
+	}
+	const firstEventDosageAmount = firstEventDT ? parseFloat(events[0].dosageAmount) : 0;
+
+	const initialDeficitHours = firstEventDosageAmount / currentRate;
+	const projectedStartTimeDT = firstEventDT.minus({ hours: initialDeficitHours });
+
 	const nowDT = getLocalNow();
 
 	let hoursElapsed = 0;
+	hoursElapsed = calculateHoursBetween(projectedStartTimeDT, firstEventDT);
+
 	if (firstEventDT && firstEventDT.isValid) {
-		hoursElapsed = calculateHoursBetween(firstEventDT, nowDT);
+		hoursElapsed += calculateHoursBetween(firstEventDT, nowDT);
 	} else if (events.length > 0) {
 		//Edge case: first event time was invalid
 		console.warn('First event time was invalid for stats calculation.');
