@@ -112,17 +112,15 @@ function handleAddData(params) {
 			return { success: false, error: "Missing or empty 'floatValue' parameter." };
 		}
 
-		// Validate if dateStr is a valid ISO 8601 string (date or datetime)
+		// Validate if dateStr is a valid ISO 8601 string (luxon datetime)
 		// Regex for YYYY-MM-DDTHH:mm:ss (optional fractional seconds and timezone)
 		const isoDateTimeRegex =
 			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|([+-]\d{2}(:\d{2})?))?$/;
-		// Regex for YYYY-MM-DD
-		const isoDateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
 
-		if (!isoDateTimeRegex.test(dateStr) && !isoDateOnlyRegex.test(dateStr)) {
+		if (!isoDateTimeRegex.test(dateStr)) {
 			return {
 				success: false,
-				error: `Invalid 'date' format: '${dateStr}'. Expected a valid ISO 8601 string (e.g., YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ).`,
+				error: `Invalid 'date' format: '${dateStr}'. Expected a valid ISO 8601 string (e.g., YYYY-MM-DDTHH:mm:ssZ).`,
 			};
 		}
 
@@ -134,9 +132,8 @@ function handleAddData(params) {
 		const sheet = _getSheet(SHEET_NAME);
 		_internalEnsureHeaders(sheet); // Ensure headers are present
 
-		// Store the dateStr directly as a string
 		sheet.appendRow([dateStr.trim(), floatValue]);
-		return { success: true, message: 'Data added successfully with ISO date string.' };
+		return { success: true, message: 'Entry added successfully with ISO date string.' };
 	} catch (error) {
 		console.error(`Error in handleAddData: ${error.toString()}`, error.stack);
 		return { success: false, error: error.message };
@@ -163,7 +160,7 @@ function handleGetData() {
 		const rawValues = dataRange.getValues();
 
 		const values = rawValues.map((row) => {
-			// Date is expected to be an ISO string as stored by handleAddData
+			// Date is expected to be an luxon ISO string as stored by handleAddData
 			return {
 				date: row[0], // This will be the ISO string
 				value: row[1] !== null && String(row[1]).trim() !== '' ? parseFloat(String(row[1])) : null,
@@ -199,11 +196,10 @@ function handleRemoveData(params) {
 
 		const targetIsoString = dateToRemoveParam.trim();
 
-		// Optional: Validate targetIsoString format as well
 		const isoDateTimeRegex =
 			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|([+-]\d{2}(:\d{2})?))?$/;
-		const isoDateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
-		if (!isoDateTimeRegex.test(targetIsoString) && !isoDateOnlyRegex.test(targetIsoString)) {
+
+		if (!isoDateTimeRegex.test(targetIsoString)) {
 			return {
 				success: false,
 				error: `Invalid 'date' format for removal: '${targetIsoString}'. Expected a valid ISO 8601 string.`,
@@ -212,10 +208,8 @@ function handleRemoveData(params) {
 
 		const sheet = _getSheet(SHEET_NAME);
 		if (sheet.getLastRow() <= 1) {
-			return { success: true, removed: false, message: 'No data to remove.' };
+			return { success: true, removed: false, message: 'No entry to remove.' };
 		}
-
-		_internalEnsureHeaders(sheet);
 
 		const dateColumnValues = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues();
 		let removed = false;
