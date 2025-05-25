@@ -608,7 +608,7 @@ async function removeDosageEntryHandler(buttonElement) {
 		return;
 	}
 
-	const dosageTimeToRemoveDT = luxon.DateTime.fromISO(rawTimeISO);
+	const dosageTimeToRemoveDT = luxon.DateTime.fromISO(rawTimeISO, { zone: timeZone });
 	if (!dosageTimeToRemoveDT.isValid) {
 		alert('Error: Stored time for removal is invalid.');
 		return;

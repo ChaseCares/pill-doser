@@ -244,7 +244,7 @@ function handleRemoveData(params) {
 			return {
 				success: true,
 				removed: false,
-				message: `No data found for ISO date '${targetIsoString}'.`,
+				message: `No entry found for ISO date '${targetIsoString}'.`,
 			};
 		}
 	} catch (error) {
