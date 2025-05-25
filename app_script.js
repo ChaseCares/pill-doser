@@ -21,8 +21,6 @@ function _getSheet(sheetName) {
 	const ss = SpreadsheetApp.getActiveSpreadsheet();
 	const sheet = ss.getSheetByName(sheetName);
 	if (!sheet) {
-		// You could also create the sheet here if preferred:
-		// return ss.insertSheet(sheetName);
 		throw new Error(`Sheet "${sheetName}" not found.`);
 	}
 	return sheet;
@@ -53,7 +51,6 @@ function _internalEnsureHeaders(sheet) {
 		return { changed: true, message: 'Headers added to empty sheet.' };
 	}
 
-	// Check existing first row headers
 	const maxCols = sheet.getMaxColumns();
 	let currentHeader1 = '';
 	let currentHeader2 = '';
@@ -93,38 +90,53 @@ function handleEnsureHeaders() {
 }
 
 /**
- * Handles adding new data to the sheet.
- * @param {object} params The parameters from the request, expecting {date, floatValue}.
+ * Handles adding new data to the sheet. Accepts date as a Luxon ISO string.
+ * @param {object} params The parameters from the request, expecting {date: string, floatValue: string|number}.
  * @returns {object} A result object {success, message/error}.
  */
 function handleAddData(params) {
 	try {
 		const { date: dateStr, floatValue: floatValueStr } = params;
 
-		if (!dateStr || floatValueStr === undefined || floatValueStr === null) {
-			return { success: false, error: "Missing 'date' or 'floatValue' parameter." };
+		if (!dateStr || typeof dateStr !== 'string' || dateStr.trim() === '') {
+			return {
+				success: false,
+				error: "Missing or invalid 'date' parameter. Expected a Luxon ISO string.",
+			};
+		}
+		if (
+			floatValueStr === undefined ||
+			floatValueStr === null ||
+			String(floatValueStr).trim() === ''
+		) {
+			return { success: false, error: "Missing or empty 'floatValue' parameter." };
 		}
 
-		const floatValue = parseFloat(floatValueStr);
+		// Validate if dateStr is a valid ISO 8601 string (date or datetime)
+		// Regex for YYYY-MM-DDTHH:mm:ss (optional fractional seconds and timezone)
+		const isoDateTimeRegex =
+			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|([+-]\d{2}(:\d{2})?))?$/;
+		// Regex for YYYY-MM-DD
+		const isoDateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+		if (!isoDateTimeRegex.test(dateStr) && !isoDateOnlyRegex.test(dateStr)) {
+			return {
+				success: false,
+				error: `Invalid 'date' format: '${dateStr}'. Expected a valid ISO 8601 string (e.g., YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ).`,
+			};
+		}
+
+		const floatValue = parseFloat(String(floatValueStr));
 		if (isNaN(floatValue)) {
 			return { success: false, error: `Invalid floatValue: '${floatValueStr}'. Must be a number.` };
-		}
-
-		let dateObject;
-		try {
-			dateObject = new Date(dateStr);
-			if (isNaN(dateObject.getTime())) {
-				throw new Error('Invalid date string format.');
-			}
-		} catch (e) {
-			return { success: false, error: `Invalid date string: '${dateStr}'. Could not parse.` };
 		}
 
 		const sheet = _getSheet(SHEET_NAME);
 		_internalEnsureHeaders(sheet); // Ensure headers are present
 
-		sheet.appendRow([dateObject, floatValue]);
-		return { success: true, message: 'Data added successfully.' };
+		// Store the dateStr directly as a string
+		sheet.appendRow([dateStr.trim(), floatValue]);
+		return { success: true, message: 'Data added successfully with ISO date string.' };
 	} catch (error) {
 		console.error(`Error in handleAddData: ${error.toString()}`, error.stack);
 		return { success: false, error: error.message };
@@ -141,23 +153,20 @@ function handleGetData() {
 
 		if (sheet.getLastRow() <= 1) {
 			// Only header row or empty
-			// Ensure headers exist if sheet is not completely empty but only has 1 row.
 			if (sheet.getLastRow() === 1) _internalEnsureHeaders(sheet);
 			return { success: true, data: [] };
 		}
 
-		_internalEnsureHeaders(sheet); // Ensure headers are what we expect before processing data.
+		_internalEnsureHeaders(sheet);
 
-		const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2); // Get data below header
+		const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2);
 		const rawValues = dataRange.getValues();
 
 		const values = rawValues.map((row) => {
-			let dateVal = row[0];
-			// Dates from getValues() are usually Date objects if formatted as dates in sheet.
-			// JSON.stringify will convert Date objects to ISO 8601 strings.
+			// Date is expected to be an ISO string as stored by handleAddData
 			return {
-				date: dateVal,
-				value: row[1] !== null && row[1] !== '' ? parseFloat(row[1]) : null,
+				date: row[0], // This will be the ISO string
+				value: row[1] !== null && String(row[1]).trim() !== '' ? parseFloat(String(row[1])) : null,
 			};
 		});
 
@@ -169,72 +178,59 @@ function handleGetData() {
 }
 
 /**
- * Handles removing data from the sheet based on a date.
- * Removes the first occurrence from the bottom that matches the date.
- * @param {object} params The parameters from the request, expecting {date}.
+ * Handles removing data from the sheet based on an exact ISO date string.
+ * Removes the first occurrence from the bottom that matches the ISO string.
+ * @param {object} params The parameters from the request, expecting {date: string}.
  * @returns {object} A result object {success, removed, message/error}.
  */
 function handleRemoveData(params) {
 	try {
 		const { date: dateToRemoveParam } = params;
-		if (!dateToRemoveParam) {
-			return { success: false, error: "Missing 'date' parameter for remove action." };
+		if (
+			!dateToRemoveParam ||
+			typeof dateToRemoveParam !== 'string' ||
+			dateToRemoveParam.trim() === ''
+		) {
+			return {
+				success: false,
+				error: "Missing or invalid 'date' parameter for remove action. Expected an ISO string.",
+			};
 		}
 
-		let targetDateObject;
-		try {
-			targetDateObject = new Date(dateToRemoveParam);
-			if (isNaN(targetDateObject.getTime())) {
-				throw new Error('Invalid date string format for removal.');
-			}
-		} catch (e) {
-			return { success: false, error: `Invalid date string for removal: '${dateToRemoveParam}'.` };
+		const targetIsoString = dateToRemoveParam.trim();
+
+		// Optional: Validate targetIsoString format as well
+		const isoDateTimeRegex =
+			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|([+-]\d{2}(:\d{2})?))?$/;
+		const isoDateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+		if (!isoDateTimeRegex.test(targetIsoString) && !isoDateOnlyRegex.test(targetIsoString)) {
+			return {
+				success: false,
+				error: `Invalid 'date' format for removal: '${targetIsoString}'. Expected a valid ISO 8601 string.`,
+			};
 		}
-		const targetDateString = Utilities.formatDate(
-			targetDateObject,
-			Session.getScriptTimeZone(),
-			'yyyy-MM-dd'
-		);
 
 		const sheet = _getSheet(SHEET_NAME);
 		if (sheet.getLastRow() <= 1) {
-			// No data rows to remove
 			return { success: true, removed: false, message: 'No data to remove.' };
 		}
 
-		_internalEnsureHeaders(sheet); // Ensure headers are in place
+		_internalEnsureHeaders(sheet);
 
-		const data = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues(); // Get only the date column with headers
+		const dateColumnValues = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues();
 		let removed = false;
 
-		// Iterate backwards from the last data row (excluding header if present)
-		for (let i = data.length - 1; i >= 1; i--) {
+		for (let i = dateColumnValues.length - 1; i >= 1; i--) {
 			// i = 0 is header row
-			const cellValue = data[i][0];
-			let cellDateString = '';
+			const cellValue = dateColumnValues[i][0];
 
-			if (cellValue instanceof Date) {
-				cellDateString = Utilities.formatDate(cellValue, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-			} else if (typeof cellValue === 'string' && cellValue.trim() !== '') {
-				try {
-					const d = new Date(cellValue);
-					if (!isNaN(d.getTime())) {
-						cellDateString = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-					} else {
-						// If it's a string but not a valid date, it won't match our targetDateString format
-						cellDateString = cellValue.trim(); // Or simply continue
-					}
-				} catch (e) {
-					cellDateString = cellValue.trim();
+			if (typeof cellValue === 'string') {
+				const sheetIsoString = cellValue.trim();
+				if (sheetIsoString === targetIsoString) {
+					sheet.deleteRow(i + 1); // i is 0-indexed, sheet rows are 1-indexed
+					removed = true;
+					break;
 				}
-			} else {
-				continue; // Skip empty or non-date/non-string cells
-			}
-
-			if (cellDateString === targetDateString) {
-				sheet.deleteRow(i + 1); // i is 0-indexed, sheet rows are 1-indexed
-				removed = true;
-				break; // Remove only the first match from the bottom
 			}
 		}
 
@@ -242,13 +238,13 @@ function handleRemoveData(params) {
 			return {
 				success: true,
 				removed: true,
-				message: `Data for date '${targetDateString}' removed.`,
+				message: `Data for ISO date '${targetIsoString}' removed.`,
 			};
 		} else {
 			return {
 				success: true,
 				removed: false,
-				message: `No data found for date '${targetDateString}'.`,
+				message: `No data found for ISO date '${targetIsoString}'.`,
 			};
 		}
 	} catch (error) {
@@ -296,12 +292,8 @@ function doGet(e) {
 function doPost(e) {
 	let result;
 	try {
-		// POST parameters are typically in e.postData.contents if it's a JSON payload
-		// or e.parameter for form data. The original script uses e.parameter.
-		// If using JSON payload, you'd do: const params = JSON.parse(e.postData.contents);
-		// Sticking to e.parameter as per original script for action parameter.
 		const action = e.parameter.action;
-		const params = e.parameter; // Pass all parameters to handlers
+		const params = e.parameter;
 
 		switch (action) {
 			case 'add':
