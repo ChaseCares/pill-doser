@@ -287,7 +287,7 @@ function updateStatisticsDisplay(events) {
 
 	setStat('needed', currentNeeded.toFixed(1));
 	setStat('totalGiven', totalGiven.toFixed(1));
-	setStat('totalNeeded', totalNeededIdeal.toFixed(1));
+	setStat('totalNeeded', totalNeededIdeal.toFixed(2));
 
 	if (currentRate > 0) {
 		const halfDosageTimeOffsetHours = (0.5 - currentNeeded) / currentRate;
