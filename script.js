@@ -312,7 +312,7 @@ function populateEventRow(dosageAmount, dosageTimeISO) {
                 <tr>
                     <th>Dosage Amount</th>
                     <th>Dosage Time</th>
-                    <th>Action</th>
+                    <th>Remove</th>
                 </tr>
             </thead>
             <tbody></tbody>`;

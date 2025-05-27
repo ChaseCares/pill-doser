@@ -5,24 +5,13 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<link href="./img/favicon.ico" rel="icon" type="image/x-icon" />
 
-		<title>Dosage Helper</title>
+		<link href="style.css" rel="stylesheet" type="text/css" />
 
-		<style>
-			#overlay {
-				position: fixed;
-				top: 0;
-				left: 0;
-				width: 100%;
-				height: 100%;
-				background: rgba(0, 0, 0, 0.5);
-				opacity: 0.5;
-				z-index: 1000;
-			}
-		</style>
+		<title>Dosage Helper</title>
 	</head>
 	<body>
 		<div id="overlay"></div>
-		<h1>! Testing do not used for people or pets !</h1>
+		<h1>¡! Testing do not use for people or pets !¡</h1>
 		<h2>Check time before use!!</h2>
 		<div>
 			<div id="timeCheckNow"></div>
@@ -32,29 +21,32 @@
 
 		<h2>Dosage Helper</h2>
 		<div>
-			<input type="number" id="pills" step="0.1" />
-			<label for="pills">pill(s)</label>
+			<div class="dosageDisplay">
+				<div class="dosageInput">
+					<input type="number" id="pills" step="0.1" />
+					<label for="pills">pill(s)</label>
+					<hr />
 
-			<label for="hour">per</label>
-			<input type="number" id="hour" />
-			<span>hour(s)</span>
+					<input type="number" id="hour" />
+					<span>hour(s)</span>
+				</div>
+				<div class="rate">
+					=
+					<span id="rate"></span>
+					pill per hour
+				</div>
+			</div>
 
-			<h3>
-				Rate:
-				<span id="rate"></span>
-			</h3>
-
-			<h2>Administer events</h2>
-			<table id="add_events"></table>
-			<hr />
-			<input type="button" value="add 1 now" onclick="addNewEvent(1)" />
-			<input type="button" value="add 0.5 now" onclick="addNewEvent(0.5)" />
+			<h3>Administer events</h3>
+			<div id="add_events"></div>
+			<h3>Add event</h3>
+			<input type="button" value="1 now" onclick="addNewEvent(1)" />
+			<input type="button" value="0.5 now" onclick="addNewEvent(0.5)" />
 			<br />
 
-			<h4>Custom event</h4>
+			<h3>Custom event</h3>
 			<label for="dosage_amount">Dosage amount:</label>
 			<input type="number" name="Dosage amount" id="dosage_amount" step="0.1" />
-			<br />
 
 			<label for="dosage_time">Dosage time:</label>
 			<input type="datetime-local" name="new_event" id="new_event_datetime" />
@@ -80,7 +72,7 @@
 					<th>0.5 needed in</th>
 					<th>
 						<span id="half"></span>
-						hr
+						at
 						<span id="half_time"></span>
 					</th>
 				</tr>
@@ -88,7 +80,7 @@
 					<th>1 needed in</th>
 					<th>
 						<span id="one"></span>
-						hr
+						at
 						<span id="one_time"></span>
 					</th>
 				</tr>
